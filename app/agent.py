@@ -1,0 +1,237 @@
+import os
+
+import requests
+
+from app.security.iam_analyzer import analyze_iam_policy
+from app.security.log_analyzer import analyze_log
+from app.security.misconfig_detector import detect_misconfig
+
+
+OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434/api/generate")
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "phi3:mini")
+OLLAMA_NUM_PREDICT = int(os.getenv("OLLAMA_NUM_PREDICT", "96"))
+CLOUD_KEYWORDS = {
+    "aws", "azure", "gcp", "cloud", "iam", "policy", "policies", "role",
+    "roles", "permission", "permissions", "s3", "bucket", "ec2", "lambda",
+    "vpc", "security group", "firewall", "encryption", "kms", "key", "keys",
+    "secret", "secrets", "credential", "credentials", "mfa", "identity",
+    "access", "rbac", "misconfig", "misconfiguration", "audit", "log", "logs",
+    "threat", "incident", "oauth", "token", "principal", "resource"
+}
+TEXTUAL_ATTACHMENT_KINDS = {"text", "json", "document", "data"}
+VISUAL_ATTACHMENT_KINDS = {"image", "video", "audio"}
+
+
+def detect_input_type(query: str) -> str:
+    q = query.strip()
+    q_lower = q.lower()
+
+    if (
+        (q.startswith("{") and "Statement" in q)
+        or ("statement" in q_lower and "\"action\"" in q_lower)
+        or ("statement" in q_lower and "\"resource\"" in q_lower)
+    ):
+        return "iam"
+
+    if "user:" in q_lower and "action:" in q_lower:
+        return "log"
+
+    misconfig_keywords = ["public", "encryption", "0.0.0.0", "0.0.0.0/0"]
+    if any(keyword in q_lower for keyword in misconfig_keywords):
+        return "misconfig"
+
+    return "general"
+
+
+def is_cloud_security_question(query: str) -> bool:
+    query_lower = query.lower()
+    return any(keyword in query_lower for keyword in CLOUD_KEYWORDS)
+
+
+def summarize_attachment(attachment: dict) -> str:
+    name = attachment.get("name", "attachment")
+    kind = attachment.get("kind", "file")
+    mime_type = attachment.get("mime_type") or "application/octet-stream"
+    size_bytes = attachment.get("size_bytes", 0)
+    return f"- {name} ({kind}, {mime_type}, {size_bytes} bytes)"
+
+
+def get_attachment_text_by_kind(attachments, preferred_kinds):
+    attachments = attachments or []
+    for attachment in attachments:
+        if attachment.get("kind") in preferred_kinds:
+            text_content = (attachment.get("text_content") or "").strip()
+            if text_content:
+                return text_content
+    return None
+
+
+def detect_input_type_from_attachments(attachments):
+    attachments = attachments or []
+
+    for attachment in attachments:
+        text_content = (attachment.get("text_content") or "").strip()
+        if not text_content:
+            continue
+
+        text_lower = text_content.lower()
+        if (
+            ("statement" in text_lower and "\"action\"" in text_lower)
+            or ("statement" in text_lower and "\"resource\"" in text_lower)
+            or (text_content.startswith("{") and "Statement" in text_content)
+        ):
+            return "iam"
+
+        if "user:" in text_lower and "action:" in text_lower:
+            return "log"
+
+    return None
+
+
+def normalize_user_input(query: str, attachments=None) -> str:
+    query = (query or "").strip()
+    attachments = attachments or []
+
+    text_sections = []
+    raw_text_sections = []
+    metadata_sections = []
+
+    for attachment in attachments:
+        metadata_sections.append(summarize_attachment(attachment))
+
+        text_content = (attachment.get("text_content") or "").strip()
+        if text_content and attachment.get("kind") in TEXTUAL_ATTACHMENT_KINDS:
+            name = attachment.get("name", "attachment")
+            raw_text_sections.append(text_content)
+            text_sections.append(f"File: {name}\n{text_content}")
+
+    if not query and raw_text_sections:
+        return "\n\n".join(raw_text_sections).strip()
+
+    parts = []
+    if query:
+        parts.append(query)
+
+    if text_sections:
+        parts.append("Uploaded file contents:\n" + "\n\n".join(text_sections))
+
+    if metadata_sections and not text_sections:
+        parts.append("Uploaded attachment metadata:\n" + "\n".join(metadata_sections))
+
+    return "\n\n".join(parts).strip()
+
+
+def has_visual_attachments(attachments=None) -> bool:
+    attachments = attachments or []
+    return any(attachment.get("kind") in VISUAL_ATTACHMENT_KINDS for attachment in attachments)
+
+
+def generate_with_ollama(prompt: str, fallback_message: str) -> str:
+    try:
+        response = requests.post(
+            OLLAMA_URL,
+            json={
+                "model": OLLAMA_MODEL,
+                "prompt": prompt,
+                "stream": False,
+                "keep_alive": "10m",
+                "options": {
+                    "temperature": 0,
+                    "num_predict": OLLAMA_NUM_PREDICT,
+                },
+            },
+            timeout=120,
+        )
+        response.raise_for_status()
+
+        data = response.json()
+        return data.get("response", "No response returned from model.")
+    except requests.RequestException:
+        return fallback_message
+
+
+def cloud_rag_answer(query: str, attachments=None) -> str:
+    from app.retriever import search
+
+    docs = search(query, top_k=2)
+    if not docs:
+        return general_answer(query, attachments=attachments)
+
+    context = "\n\n".join(doc["content"] for doc in docs)
+    visual_note = ""
+    if has_visual_attachments(attachments):
+        visual_note = (
+            "\nIf uploaded files include images, audio, or video without extracted text, "
+            "be explicit that this version can acknowledge the files but cannot inspect "
+            "their visual or media content directly.\n"
+        )
+
+    prompt = f"""You are a cloud security assistant.
+Use only the provided context for cloud-security claims.
+Answer in exactly 3 short bullet points.
+{visual_note}
+Context:
+{context}
+
+Question: {query}
+"""
+
+    fallback = "Cloud security notes from the indexed docs:\n" + context
+    return generate_with_ollama(prompt, fallback)
+
+
+def general_answer(query: str, attachments=None) -> str:
+    attachment_note = ""
+    if attachments:
+        attachment_summaries = "\n".join(summarize_attachment(attachment) for attachment in attachments)
+        attachment_note = (
+            "\nUploaded attachments:\n"
+            f"{attachment_summaries}\n"
+            "If an attachment is an image, audio file, or video without extracted text, "
+            "say you received it but cannot inspect that media content directly in this version.\n"
+        )
+
+    prompt = f"""You are a helpful general-purpose assistant.
+Answer the user's question directly and concisely.
+If the question is unrelated to cloud security, that is fine.
+Use short paragraphs or bullet points when helpful.
+Do not mention model vendors, training details, or platform provenance.
+{attachment_note}
+Question: {query}
+"""
+
+    return generate_with_ollama(
+        prompt,
+        "I could not reach the local model to answer that question right now.",
+    )
+
+
+def run_agent(query: str, attachments=None) -> str:
+    attachments = attachments or []
+    normalized_query = normalize_user_input(query, attachments)
+
+    if not normalized_query and attachments:
+        return (
+            "I received your uploaded files.\n\n"
+            "Text-based files can be analyzed directly. Image, audio, and video files are "
+            "accepted in the UI, but this version cannot inspect their media content yet. "
+            "Add a text prompt if you want help with the file metadata or related questions."
+        )
+
+    input_type = detect_input_type_from_attachments(attachments) or detect_input_type(normalized_query)
+
+    if input_type == "iam":
+        iam_content = get_attachment_text_by_kind(attachments, {"json", "text", "document", "data"})
+        return analyze_iam_policy(iam_content or normalized_query)
+
+    if input_type == "log":
+        log_content = get_attachment_text_by_kind(attachments, {"text", "document"})
+        return analyze_log(log_content or normalized_query)
+
+    if input_type == "misconfig":
+        return detect_misconfig(normalized_query)
+
+    if is_cloud_security_question(normalized_query):
+        return cloud_rag_answer(normalized_query, attachments=attachments)
+
+    return general_answer(normalized_query, attachments=attachments)

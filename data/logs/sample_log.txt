@@ -1,0 +1,5 @@
+User: admin
+Action: DeleteBucket
+Resource: sensitive-data-bucket
+Status: Success
+SourceIP: 0.0.0.0
