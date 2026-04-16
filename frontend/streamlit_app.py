@@ -24,7 +24,7 @@ DATA_EXTENSIONS     = {".json", ".jsonl", ".ndjson", ".parquet", ".pkl"}
 
 MAX_TEXT_CHARS     = 12000
 TEXT_PREVIEW_CHARS = 800
-BACKEND_URL        = f"{API_BASE_URL}/ask"
+BACKEND_URL = os.getenv("BACKEND_URL", "http://127.0.0.1:8000")
 MODEL_NAME         = "phi3:mini"
 
 QUICK_ACTIONS = [
@@ -328,8 +328,11 @@ def build_payload(f):
     return payload, preview
 
 def submit_request(query, attachments):
-    r = requests.post(BACKEND_URL, json={"query": query, "attachments": attachments}, timeout=180)
-    return r.json()
+    r = requests.post(
+    f"{BACKEND_URL}/ask",
+    json={"query": query, "attachments": attachments},
+    timeout=180
+)
 
 
 def get_active_chat():
