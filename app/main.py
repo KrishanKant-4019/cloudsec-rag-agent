@@ -1,8 +1,9 @@
 from contextlib import asynccontextmanager
 from typing import Annotated, List, Optional
 
-from fastapi import Depends, FastAPI, Header, HTTPException, status
+from fastapi import Depends, FastAPI, Header, HTTPException, Security, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 from sqlalchemy.orm import Session
 
@@ -13,6 +14,7 @@ from app.database import User, get_db, init_db
 
 
 settings = get_settings()
+bearer_scheme = HTTPBearer(auto_error=False)
 
 
 @asynccontextmanager
@@ -85,9 +87,10 @@ def _extract_bearer_token(authorization: str | None) -> str:
 
 
 def get_current_user(
-    authorization: Annotated[str | None, Header()] = None,
+    credentials: HTTPAuthorizationCredentials | None = Security(bearer_scheme),
     db: Session = Depends(get_db),
 ) -> User:
+    authorization = None if credentials is None else f"{credentials.scheme} {credentials.credentials}"
     token = _extract_bearer_token(authorization)
     payload = verify_token(token)
     if not payload or "sub" not in payload:
@@ -100,6 +103,7 @@ def get_current_user(
 
 
 @app.get("/")
+@app.head("/")
 def read_root():
     return {
         "message": "CloudSec AI Agent is running",
