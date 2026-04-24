@@ -4,8 +4,10 @@ from typing import Any, Dict
 
 import requests
 
+from app.config import get_settings
 
-API_BASE_URL = os.getenv("CLOUDSEC_API_URL", "http://127.0.0.1:8000")
+settings = get_settings()
+API_BASE_URL = os.getenv("CLOUDSEC_API_URL", str(settings["api_base_url"]))
 
 
 def _post_with_retry(path: str, payload: Dict[str, Any], timeout: int = 30) -> requests.Response:
@@ -44,6 +46,17 @@ def login_user(email: str, password: str) -> Dict[str, Any]:
         "/login",
         {"email": email, "password": password},
         timeout=30,
+    )
+    response.raise_for_status()
+    return response.json()
+
+
+def ask_agent(query: str, attachments: list[dict], token: str, timeout: int = 180) -> Dict[str, Any]:
+    response = requests.post(
+        f"{API_BASE_URL}/ask",
+        json={"query": query, "attachments": attachments},
+        headers={"Authorization": f"Bearer {token}"},
+        timeout=timeout,
     )
     response.raise_for_status()
     return response.json()

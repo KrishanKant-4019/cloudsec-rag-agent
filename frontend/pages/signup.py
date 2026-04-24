@@ -1,7 +1,7 @@
 import requests
 import streamlit as st
 
-from auth_api import signup_user
+from frontend.auth_api import signup_user
 
 
 st.set_page_config(
@@ -275,14 +275,14 @@ with right:
         email = st.text_input("Email", placeholder="you@example.com", key="signup_email")
         password = st.text_input(
             "Password",
-        type="default",
+            type="password",
             placeholder="Create a strong password",
             key="signup_password",
             help="Supports letters, numbers, and special characters.",
         )
         confirm_password = st.text_input(
             "Confirm password",
-        type="default",
+            type="password",
             placeholder="Repeat your password",
             key="signup_confirm_password",
             help="Supports letters, numbers, and special characters.",

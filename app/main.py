@@ -1,45 +1,72 @@
-from fastapi import FastAPI, Depends, HTTPException, status
-from pydantic import BaseModel
-from typing import List, Optional
+from contextlib import asynccontextmanager
+from typing import Annotated, List, Optional
+
+from fastapi import Depends, FastAPI, Header, HTTPException, status
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 from sqlalchemy.orm import Session
-from datetime import timedelta
 
 from app.agent import run_agent
+from app.auth import create_access_token, hash_password, verify_password, verify_token
+from app.config import get_settings
 from app.database import User, get_db, init_db
-from app.auth import (
-    hash_password,
-    verify_password,
-    create_access_token,
-    verify_token,
-)
 
-app = FastAPI(title="CloudSec RAG Agent")
 
-# Initialize database on startup
+settings = get_settings()
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    init_db()
+    yield
+
+
+app = FastAPI(title=str(settings["app_name"]), lifespan=lifespan)
 init_db()
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=list(settings["cors_origins"]),
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 class AttachmentRequest(BaseModel):
-    name: str
-    mime_type: Optional[str] = None
-    size_bytes: int = 0
-    kind: Optional[str] = None
-    text_content: Optional[str] = None
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    name: str = Field(..., min_length=1, max_length=255)
+    mime_type: Optional[str] = Field(default=None, max_length=255)
+    size_bytes: int = Field(default=0, ge=0, le=25_000_000)
+    kind: Optional[str] = Field(default=None, max_length=50)
+    text_content: Optional[str] = Field(
+        default=None,
+        max_length=int(settings["max_attachment_chars"]),
+    )
 
 
 class QueryRequest(BaseModel):
-    query: str = ""
-    attachments: Optional[List[AttachmentRequest]] = None
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    query: str = Field(default="", max_length=int(settings["max_query_chars"]))
+    attachments: Optional[List[AttachmentRequest]] = Field(
+        default=None,
+        max_length=int(settings["max_attachment_count"]),
+    )
 
 
 class SignupRequest(BaseModel):
-    email: str
-    password: str
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    email: EmailStr
+    password: str = Field(..., min_length=8, max_length=128)
 
 
 class LoginRequest(BaseModel):
-    email: str
-    password: str
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    email: EmailStr
+    password: str = Field(..., min_length=8, max_length=128)
 
 
 class TokenResponse(BaseModel):
@@ -48,82 +75,82 @@ class TokenResponse(BaseModel):
     user_email: str
 
 
+def _extract_bearer_token(authorization: str | None) -> str:
+    if not authorization:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing authorization header.")
+    scheme, _, token = authorization.partition(" ")
+    if scheme.lower() != "bearer" or not token:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid authorization header.")
+    return token.strip()
+
+
+def get_current_user(
+    authorization: Annotated[str | None, Header()] = None,
+    db: Session = Depends(get_db),
+) -> User:
+    token = _extract_bearer_token(authorization)
+    payload = verify_token(token)
+    if not payload or "sub" not in payload:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token.")
+
+    user = db.query(User).filter(User.email == payload["sub"]).first()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found.")
+    return user
+
+
 @app.get("/")
 def read_root():
-    return {"message": "CloudSec AI Agent is running 🚀"}
+    return {
+        "message": "CloudSec AI Agent is running",
+        "environment": settings["environment"],
+    }
+
+
+@app.get("/health")
+def healthcheck():
+    return {"status": "ok"}
 
 
 @app.post("/signup", response_model=dict)
 def signup(request: SignupRequest, db: Session = Depends(get_db)):
-    """Register a new user."""
-    # Check if email already exists
-    existing_user = db.query(User).filter(User.email == request.email).first()
+    existing_user = db.query(User).filter(User.email == request.email.lower()).first()
     if existing_user:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Email already registered"
-        )
-    
-    # Validate password length
-    if len(request.password) < 6:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Password must be at least 6 characters"
-        )
-    
-    # Create new user
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email already registered")
+
     hashed_pwd = hash_password(request.password)
-    new_user = User(email=request.email, hashed_password=hashed_pwd)
+    new_user = User(email=request.email.lower(), hashed_password=hashed_pwd)
     db.add(new_user)
     db.commit()
     db.refresh(new_user)
-    
-    return {
-        "message": "User registered successfully",
-        "user_id": new_user.id,
-        "email": new_user.email
-    }
+    return {"message": "User registered successfully", "user_id": new_user.id, "email": new_user.email}
 
 
 @app.post("/login", response_model=TokenResponse)
 def login(request: LoginRequest, db: Session = Depends(get_db)):
-    """Authenticate user and return JWT token."""
-    # Find user by email
-    user = db.query(User).filter(User.email == request.email).first()
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid email or password"
-        )
-    
-    # Verify password
-    if not verify_password(request.password, user.hashed_password):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid email or password"
-        )
-    
-    # Create access token
-    access_token = create_access_token(data={"sub": user.email})
-    
-    return TokenResponse(
-        access_token=access_token,
-        user_email=user.email
-    )
+    user = db.query(User).filter(User.email == request.email.lower()).first()
+    if not user or not verify_password(request.password, user.hashed_password):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password")
 
+    access_token = create_access_token(data={"sub": user.email})
+    return TokenResponse(access_token=access_token, user_email=user.email)
 
 
 @app.post("/ask")
-def ask_agent(request: QueryRequest):
+def ask_agent(request: QueryRequest, _: User = Depends(get_current_user)):
+    if not request.query and not request.attachments:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Provide a query or at least one attachment.")
+
     try:
         response = run_agent(
             request.query,
-            [attachment.dict() for attachment in (request.attachments or [])],
+            [attachment.model_dump() for attachment in (request.attachments or [])],
         )
-
-        return {
-            "answer": response
-        }
-
-    except Exception as e:
-        return {"error": str(e)}
+        return {"answer": response}
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="The agent could not process the request.",
+        )

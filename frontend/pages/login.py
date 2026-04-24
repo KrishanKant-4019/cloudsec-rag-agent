@@ -1,8 +1,8 @@
 import requests
 import streamlit as st
 
-from auth_api import login_user
-from auth_storage import persist_auth_to_cookie
+from frontend.auth_api import login_user
+from frontend.auth_storage import persist_auth_to_cookie
 
 
 st.set_page_config(
@@ -276,7 +276,7 @@ with right:
       email = st.text_input("Email", placeholder="you@example.com", key="login_email")
       password = st.text_input(
         "Password",
-        type="default",
+        type="password",
         placeholder="Enter your password",
         key="login_password",
         help="Supports letters, numbers, and special characters.",

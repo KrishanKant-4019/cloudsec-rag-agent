@@ -1,16 +1,14 @@
-import os
 from datetime import datetime, timedelta
 from typing import Optional
-from bcrypt import hashpw, gensalt, checkpw
+from bcrypt import checkpw, gensalt, hashpw
 from jose import JWTError, jwt
-from dotenv import load_dotenv
 
-load_dotenv()
+from app.config import get_settings
 
-# JWT Configuration
-SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key-change-this-in-production")
+settings = get_settings()
+SECRET_KEY = str(settings["secret_key"])
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 1440  # 24 hours
+ACCESS_TOKEN_EXPIRE_MINUTES = int(settings["access_token_expire_minutes"])
 
 
 def hash_password(password: str) -> str:

@@ -3,6 +3,15 @@ def detect_misconfig(text):
     Detect cloud misconfigurations from text.
     """
 
+    if not text:
+        return (
+            "Misconfiguration Analysis\n\n"
+            "Risk Level: UNKNOWN\n\n"
+            "Issues:\n- Empty input\n\n"
+            "Recommendations:\n"
+            "- Provide configuration details for analysis"
+        )
+
     issues = []
     text_lower = text.lower()
 

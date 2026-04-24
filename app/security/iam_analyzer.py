@@ -6,6 +6,16 @@ def analyze_iam_policy(policy_str):
     Analyze IAM policy and detect risks.
     """
 
+    if not policy_str:
+        return (
+            "IAM Policy Analysis\n\n"
+            "Risk Level: UNKNOWN\n\n"
+            "Issues:\n\n"
+            "- Empty policy input\n\n"
+            "Recommendations:\n\n"
+            "- Provide valid IAM policy JSON"
+        )
+
     try:
         policy = json.loads(policy_str)
     except Exception:

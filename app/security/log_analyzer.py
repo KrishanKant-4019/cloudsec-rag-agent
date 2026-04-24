@@ -3,6 +3,15 @@ def analyze_log(log_text):
     Analyze cloud logs for suspicious activity.
     """
 
+    if not log_text:
+        return (
+            "Log Security Analysis\n\n"
+            "Risk Level: UNKNOWN\n\n"
+            "Issues:\n- Empty log input\n\n"
+            "Recommendations:\n"
+            "- Provide a cloud log excerpt for analysis"
+        )
+
     risks = []
     log_lower = log_text.lower()
 

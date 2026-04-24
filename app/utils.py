@@ -1,11 +1,25 @@
 import os
+from functools import lru_cache
 
-def load_documents(data_path="data"):
+from app.config import get_settings
+
+
+@lru_cache(maxsize=1)
+def load_documents(data_path=None):
+    settings = get_settings()
+    base_path = data_path or str(settings["data_dir"])
     documents = []
+    allowed_extensions = {
+        ".txt", ".md", ".json", ".yaml", ".yml", ".log", ".cfg", ".conf",
+        ".ini", ".tf", ".hcl", ".py", ".js", ".ts", ".sql", ".xml", ".csv",
+    }
 
-    for root, _, files in os.walk(data_path):
+    for root, _, files in os.walk(base_path):
         for file in files:
             file_path = os.path.join(root, file)
+            extension = os.path.splitext(file)[1].lower()
+            if extension and extension not in allowed_extensions:
+                continue
 
             try:
                 with open(file_path, "r", encoding="utf-8") as f:

@@ -5,8 +5,8 @@ import datetime
 
 import requests
 import streamlit as st
-from auth_api import API_BASE_URL
-from auth_storage import clear_auth_cookie, restore_auth_from_cookie
+from frontend.auth_api import API_BASE_URL, ask_agent
+from frontend.auth_storage import clear_auth_cookie, restore_auth_from_cookie
 
 # ── Constants ────────────────────────────────────────────────────────────────
 TEXT_EXTENSIONS = {
@@ -328,11 +328,10 @@ def build_payload(f):
     return payload, preview
 
 def submit_request(query, attachments):
-    r = requests.post(
-    f"{BACKEND_URL}/ask",
-    json={"query": query, "attachments": attachments},
-    timeout=180
-)
+    token = st.session_state.get("auth_token")
+    if not token:
+        raise RuntimeError("Missing authentication token.")
+    return ask_agent(query, attachments, token=token, timeout=180)
 
 
 def get_active_chat():
@@ -542,7 +541,7 @@ if not active_chat["messages"]:
 
 # ── Active chat ───────────────────────────────────────────────────────────────
 else:
-  for msg in active_chat["messages"]:
+    for msg in active_chat["messages"]:
         avatar = "🧑‍💻" if msg["role"] == "user" else "🤖"
         with st.chat_message(msg["role"], avatar=avatar):
             if msg.get("content"):
@@ -588,6 +587,16 @@ if should_submit:
             try:
                 data   = submit_request(query, payloads)
                 answer = data.get("answer") or f"Error: {data.get('error', 'Unknown error')}"
+            except requests.HTTPError as exc:
+                if exc.response is not None and exc.response.status_code == 401:
+                    logout_user()
+                message = "The backend rejected the request."
+                if exc.response is not None:
+                    try:
+                        message = exc.response.json().get("detail", message)
+                    except Exception:
+                        pass
+                answer = f"Request failed: {message}"
             except Exception as exc:
                 answer = f"⚠️ Could not reach backend: {exc}"
         st.markdown(answer)
