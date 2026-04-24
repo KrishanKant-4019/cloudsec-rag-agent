@@ -10,9 +10,10 @@ from app.security.misconfig_detector import detect_misconfig
 
 
 settings = get_settings()
-OLLAMA_URL = str(settings["ollama_url"])
-OLLAMA_MODEL = str(settings["ollama_model"])
-OLLAMA_NUM_PREDICT = int(settings["ollama_num_predict"])
+OPENAI_API_KEY = str(settings["openai_api_key"])
+OPENAI_BASE_URL = str(settings["openai_base_url"])
+OPENAI_MODEL = str(settings["openai_model"])
+OPENAI_MAX_OUTPUT_TOKENS = int(settings["openai_max_output_tokens"])
 REQUEST_TIMEOUT_SECONDS = int(settings["request_timeout_seconds"])
 
 CLOUD_KEYWORDS = {
@@ -138,31 +139,46 @@ def has_visual_attachments(attachments=None) -> bool:
 
 @lru_cache(maxsize=128)
 def _cached_general_fallback(query: str) -> str:
-    return f"I could not reach the language model right now. Please retry with a more specific cloud-security question.\n\nRequest summary:\n{query[:500]}"
+    return (
+        "The OpenAI API is not configured or could not be reached.\n\n"
+        "Please set OPENAI_API_KEY and retry.\n\n"
+        f"Request summary:\n{query[:500]}"
+    )
 
 
-def generate_with_ollama(prompt: str, fallback_message: str) -> str:
-    if not OLLAMA_URL:
+def _extract_output_text(payload: dict) -> str:
+    if payload.get("output_text"):
+        return str(payload["output_text"]).strip()
+
+    texts = []
+    for item in payload.get("output", []):
+        for content in item.get("content", []):
+            if content.get("type") == "output_text" and content.get("text"):
+                texts.append(content["text"])
+    return "\n".join(texts).strip()
+
+
+def generate_with_openai(prompt: str, fallback_message: str) -> str:
+    if not OPENAI_API_KEY:
         return fallback_message
 
     try:
         response = requests.post(
-            OLLAMA_URL,
+            f"{OPENAI_BASE_URL}/responses",
+            headers={
+                "Authorization": f"Bearer {OPENAI_API_KEY}",
+                "Content-Type": "application/json",
+            },
             json={
-                "model": OLLAMA_MODEL,
-                "prompt": prompt,
-                "stream": False,
-                "keep_alive": "10m",
-                "options": {
-                    "temperature": 0,
-                    "num_predict": OLLAMA_NUM_PREDICT,
-                },
+                "model": OPENAI_MODEL,
+                "input": prompt,
+                "max_output_tokens": OPENAI_MAX_OUTPUT_TOKENS,
             },
             timeout=REQUEST_TIMEOUT_SECONDS,
         )
         response.raise_for_status()
         data = response.json()
-        return data.get("response", "No response returned from model.")
+        return _extract_output_text(data) or fallback_message
     except requests.RequestException:
         return fallback_message
 
@@ -193,7 +209,7 @@ Context:
 Question: {query}
 """
     fallback = "Cloud security notes from the indexed docs:\n" + context[:2500]
-    return generate_with_ollama(prompt, fallback)
+    return generate_with_openai(prompt, fallback)
 
 
 def general_answer(query: str, attachments=None) -> str:
@@ -214,7 +230,7 @@ Do not mention model vendors, training details, or platform provenance.
 {attachment_note}
 Question: {query}
 """
-    return generate_with_ollama(prompt, _cached_general_fallback(query))
+    return generate_with_openai(prompt, _cached_general_fallback(query))
 
 
 def run_agent(query: str, attachments=None) -> str:

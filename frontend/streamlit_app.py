@@ -25,7 +25,7 @@ DATA_EXTENSIONS     = {".json", ".jsonl", ".ndjson", ".parquet", ".pkl"}
 MAX_TEXT_CHARS     = 12000
 TEXT_PREVIEW_CHARS = 800
 BACKEND_URL = os.getenv("BACKEND_URL", "http://127.0.0.1:8000")
-MODEL_NAME         = "phi3:mini"
+MODEL_NAME         = os.getenv("OPENAI_MODEL", "gpt-4.1-mini")
 
 QUICK_ACTIONS = [
     {"icon": "🔍", "label": "Audit IAM Policy",    "prompt": "Analyze this IAM policy for privilege escalation risks and least-privilege violations."},
