@@ -5,8 +5,13 @@ import datetime
 
 import requests
 import streamlit as st
-from frontend.auth_api import ask_agent
-from frontend.auth_storage import clear_auth_cookie, restore_auth_from_cookie
+
+try:
+    from frontend.auth_api import ask_agent
+    from frontend.auth_storage import clear_auth_cookie, restore_auth_from_cookie
+except ModuleNotFoundError:
+    from auth_api import ask_agent
+    from auth_storage import clear_auth_cookie, restore_auth_from_cookie
 
 # ── Constants ────────────────────────────────────────────────────────────────
 TEXT_EXTENSIONS = {

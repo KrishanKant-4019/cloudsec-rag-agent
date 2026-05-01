@@ -1,7 +1,10 @@
 import requests
 import streamlit as st
 
-from frontend.auth_api import signup_user
+try:
+    from frontend.auth_api import signup_user
+except ModuleNotFoundError:
+    from auth_api import signup_user
 
 
 st.set_page_config(

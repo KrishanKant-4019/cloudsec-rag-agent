@@ -1,8 +1,12 @@
 import requests
 import streamlit as st
 
-from frontend.auth_api import login_user
-from frontend.auth_storage import persist_auth_to_cookie
+try:
+    from frontend.auth_api import login_user
+    from frontend.auth_storage import persist_auth_to_cookie
+except ModuleNotFoundError:
+    from auth_api import login_user
+    from auth_storage import persist_auth_to_cookie
 
 
 st.set_page_config(
