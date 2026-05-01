@@ -5,7 +5,7 @@ import datetime
 
 import requests
 import streamlit as st
-from frontend.auth_api import API_BASE_URL, ask_agent
+from frontend.auth_api import ask_agent
 from frontend.auth_storage import clear_auth_cookie, restore_auth_from_cookie
 
 # ── Constants ────────────────────────────────────────────────────────────────
@@ -24,7 +24,6 @@ DATA_EXTENSIONS     = {".json", ".jsonl", ".ndjson", ".parquet", ".pkl"}
 
 MAX_TEXT_CHARS     = 12000
 TEXT_PREVIEW_CHARS = 800
-BACKEND_URL = os.getenv("BACKEND_URL", "http://127.0.0.1:8000")
 MODEL_NAME         = os.getenv("OPENAI_MODEL", "gpt-4.1-mini")
 
 QUICK_ACTIONS = [
@@ -521,10 +520,10 @@ if clear_chat:
 quick_prompt = None
 
 if not active_chat["messages"]:
-    st.markdown("""
+    st.markdown(f"""
     <div class="hero">
       <span class="hero-icon">⛨</span>
-      <div class="live-badge"><span class="live-dot"></span>&nbsp; Connected · phi3:mini</div>
+      <div class="live-badge"><span class="live-dot"></span>&nbsp; Connected · {MODEL_NAME}</div>
       <h1 class="hero-title">What can I help you secure?</h1>
     </div>
     """, unsafe_allow_html=True)

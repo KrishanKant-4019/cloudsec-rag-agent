@@ -295,8 +295,8 @@ with right:
             st.error("Fill in all fields.")
         elif "@" not in normalized_email or "." not in normalized_email:
             st.error("Enter a valid email address.")
-        elif len(password) < 6:
-            st.error("Password must be at least 6 characters.")
+        elif len(password) < 8:
+            st.error("Password must be at least 8 characters.")
         elif password != confirm_password:
             st.error("Passwords do not match.")
         else:
