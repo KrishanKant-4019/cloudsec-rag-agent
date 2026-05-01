@@ -596,10 +596,15 @@ if should_submit:
                     logout_user()
                 message = "The backend rejected the request."
                 if exc.response is not None:
+                    message = f"HTTP {exc.response.status_code}: {message}"
                     try:
-                        message = exc.response.json().get("detail", message)
+                        detail = exc.response.json().get("detail")
+                        if detail:
+                            message = f"HTTP {exc.response.status_code}: {detail}"
                     except Exception:
-                        pass
+                        response_text = exc.response.text.strip()
+                        if response_text:
+                            message = f"{message}\n\n{response_text[:500]}"
                 answer = f"Request failed: {message}"
             except Exception as exc:
                 answer = f"⚠️ Could not reach backend: {exc}"
