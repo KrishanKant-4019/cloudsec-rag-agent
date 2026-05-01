@@ -26,11 +26,24 @@ Use this app entrypoint:
 frontend/streamlit_app.py
 ```
 
+The frontend has its own lightweight dependency file at:
+
+```text
+frontend/requirements.txt
+```
+
+Streamlit Community Cloud checks the entrypoint directory before the repository
+root, so this keeps the frontend build from installing backend/RAG packages like
+FAISS, sentence-transformers, LangChain, and NumPy.
+
 Set this secret/environment variable in the frontend deployment:
 
 ```text
 CLOUDSEC_API_URL=https://cloudsec-rag-agent.onrender.com
 ```
+
+Choose Python 3.11 from Streamlit Community Cloud's deploy/redeploy advanced
+settings. Community Cloud does not use `runtime.txt` to select Python.
 
 For local frontend testing:
 

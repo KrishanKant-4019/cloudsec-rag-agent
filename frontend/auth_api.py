@@ -4,10 +4,7 @@ from typing import Any, Dict
 
 import requests
 
-from app.config import get_settings
-
-settings = get_settings()
-API_BASE_URL = os.getenv("CLOUDSEC_API_URL", str(settings["api_base_url"]))
+API_BASE_URL = os.getenv("CLOUDSEC_API_URL", "https://cloudsec-rag-agent.onrender.com").rstrip("/")
 
 
 def _post_with_retry(path: str, payload: Dict[str, Any], timeout: int = 30) -> requests.Response:
