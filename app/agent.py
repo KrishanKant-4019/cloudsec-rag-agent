@@ -1,4 +1,5 @@
 import re
+import logging
 from functools import lru_cache
 
 import requests
@@ -15,6 +16,7 @@ OPENAI_BASE_URL = str(settings["openai_base_url"])
 OPENAI_MODEL = str(settings["openai_model"])
 OPENAI_MAX_OUTPUT_TOKENS = int(settings["openai_max_output_tokens"])
 REQUEST_TIMEOUT_SECONDS = int(settings["request_timeout_seconds"])
+logger = logging.getLogger(__name__)
 
 CLOUD_KEYWORDS = {
     "aws", "azure", "gcp", "cloud", "iam", "policy", "policies", "role",
@@ -160,6 +162,7 @@ def _extract_output_text(payload: dict) -> str:
 
 def generate_with_openai(prompt: str, fallback_message: str) -> str:
     if not OPENAI_API_KEY:
+        logger.warning("OpenAI request skipped: OPENAI_API_KEY is not set.")
         return fallback_message
 
     try:
@@ -176,10 +179,20 @@ def generate_with_openai(prompt: str, fallback_message: str) -> str:
             },
             timeout=REQUEST_TIMEOUT_SECONDS,
         )
+        if response.status_code >= 400:
+            logger.warning(
+                "OpenAI request failed: status=%s, response=%s",
+                response.status_code,
+                response.text[:1000],
+            )
         response.raise_for_status()
         data = response.json()
-        return _extract_output_text(data) or fallback_message
-    except requests.RequestException:
+        output_text = _extract_output_text(data)
+        if not output_text:
+            logger.warning("OpenAI response did not include output text: response=%s", response.text[:1000])
+        return output_text or fallback_message
+    except requests.RequestException as exc:
+        logger.warning("OpenAI request error: %s", exc, exc_info=True)
         return fallback_message
 
 

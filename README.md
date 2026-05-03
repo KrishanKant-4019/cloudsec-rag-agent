@@ -16,6 +16,39 @@ Health check:
 https://cloudsec-rag-agent.onrender.com/health
 ```
 
+The backend must have an OpenAI API key. Without it, the chat will return:
+
+```text
+The OpenAI API is not configured or could not be reached.
+Please set OPENAI_API_KEY and retry.
+```
+
+For local backend testing, copy the example env file and add your real key:
+
+```bash
+cp .env.example .env
+```
+
+Then edit `.env`:
+
+```text
+OPENAI_API_KEY=sk-...
+```
+
+Start the backend:
+
+```bash
+python app.py
+```
+
+For Render, add this environment variable on the backend service:
+
+```text
+OPENAI_API_KEY=sk-...
+```
+
+After changing environment variables, redeploy or restart the backend service.
+
 ## Frontend Deployment
 
 Recommended platform: Streamlit Community Cloud.
