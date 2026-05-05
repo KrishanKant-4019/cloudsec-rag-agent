@@ -18,6 +18,7 @@ VECTORSTORE_DIR = str(settings["vectorstore_dir"])
 LEGACY_VECTOR_PATH = os.path.join(VECTORSTORE_DIR, "faiss_index.pkl")
 INDEX_PATH = os.path.join(VECTORSTORE_DIR, "faiss.index")
 DOCS_PATH = os.path.join(VECTORSTORE_DIR, "documents.pkl")
+REQUIRED_DOCUMENT_KEYS = {"content", "source", "source_path", "filename", "chunk_id"}
 
 
 def _tokenize(text):
@@ -63,6 +64,10 @@ def _load_persisted_documents():
         return pickle.load(file_obj)
 
 
+def _documents_have_current_schema(documents):
+    return all(REQUIRED_DOCUMENT_KEYS.issubset(doc.keys()) for doc in documents or [])
+
+
 def create_vectorstore():
     documents = load_documents()
     if not documents:
@@ -93,13 +98,21 @@ def _load_vectorstore():
         try:
             import faiss
 
-            return faiss.read_index(INDEX_PATH), _load_persisted_documents()
+            documents = _load_persisted_documents()
+            if not _documents_have_current_schema(documents):
+                logger.warning("Persisted vectorstore document schema is outdated; rebuilding. Run python -m app.ingest to refresh stored files explicitly.")
+                return create_vectorstore()
+            return faiss.read_index(INDEX_PATH), documents
         except Exception:
             logger.warning("Failed to load FAISS vectorstore; trying fallback vectorstore.", exc_info=True)
 
     embeddings_path = os.path.join(VECTORSTORE_DIR, "embeddings.npy")
     if os.path.exists(embeddings_path) and os.path.exists(DOCS_PATH):
-        return np.load(embeddings_path), _load_persisted_documents()
+        documents = _load_persisted_documents()
+        if not _documents_have_current_schema(documents):
+            logger.warning("Persisted vectorstore document schema is outdated; rebuilding. Run python -m app.ingest to refresh stored files explicitly.")
+            return create_vectorstore()
+        return np.load(embeddings_path), documents
 
     if os.path.exists(LEGACY_VECTOR_PATH):
         try:

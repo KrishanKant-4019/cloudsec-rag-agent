@@ -13,6 +13,13 @@ except ModuleNotFoundError:
     from auth_api import ask_agent
     from auth_storage import clear_auth_cookie, restore_auth_from_cookie
 
+
+def get_int_env(name, default):
+    try:
+        return int(os.getenv(name, str(default)))
+    except ValueError:
+        return default
+
 # ── Constants ────────────────────────────────────────────────────────────────
 TEXT_EXTENSIONS = {
     ".txt", ".md", ".csv", ".log", ".yaml", ".yml", ".xml", ".html", ".htm",
@@ -29,6 +36,7 @@ DATA_EXTENSIONS     = {".json", ".jsonl", ".ndjson", ".parquet", ".pkl"}
 
 MAX_TEXT_CHARS     = 12000
 TEXT_PREVIEW_CHARS = 800
+MAX_ATTACHMENT_COUNT = get_int_env("MAX_ATTACHMENT_COUNT", 5)
 MODEL_NAME         = os.getenv("OPENAI_MODEL", "gpt-4.1-mini")
 
 QUICK_ACTIONS = [
@@ -437,6 +445,9 @@ def render_sidebar():
             key=f"uploader_{st.session_state.uploader_key}",
             label_visibility="collapsed",
         )
+        too_many_files = bool(uploaded_files) and len(uploaded_files) > MAX_ATTACHMENT_COUNT
+        if too_many_files:
+            st.error(f"Attach up to {MAX_ATTACHMENT_COUNT} files per request.")
 
     # Previews for staged files
         if uploaded_files:
@@ -461,7 +472,7 @@ def render_sidebar():
 
         c1, c2 = st.columns(2)
         with c1:
-            send_files = st.button("Send Files", use_container_width=True, disabled=not uploaded_files)
+            send_files = st.button("Send Files", use_container_width=True, disabled=not uploaded_files or too_many_files)
         with c2:
             clear_chat = st.button("Clear Chat", use_container_width=True)
 
