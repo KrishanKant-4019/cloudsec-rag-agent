@@ -4,8 +4,8 @@ from functools import lru_cache
 from app.config import get_settings
 
 
-CHUNK_SIZE = 1500
-CHUNK_OVERLAP = 200
+CHUNK_SIZE = 1200
+CHUNK_OVERLAP = 180
 
 
 def _chunk_text(content):
@@ -15,7 +15,11 @@ def _chunk_text(content):
     chunks = []
     start = 0
     while start < len(content):
-        end = start + CHUNK_SIZE
+        end = min(start + CHUNK_SIZE, len(content))
+        if end < len(content):
+            boundary = max(content.rfind("\n", start, end), content.rfind(". ", start, end))
+            if boundary > start + CHUNK_SIZE // 2:
+                end = boundary + 1
         chunk = content[start:end].strip()
         if chunk:
             chunks.append(chunk)
@@ -46,10 +50,14 @@ def load_documents(data_path=None):
                 with open(file_path, "r", encoding="utf-8") as f:
                     content = f.read()
 
+                    filename = os.path.basename(file_path)
                     for index, chunk in enumerate(_chunk_text(content), start=1):
                         documents.append({
                             "content": chunk,
-                            "source": f"{file_path}#chunk-{index}"
+                            "source": f"{file_path}#chunk-{index}",
+                            "source_path": file_path,
+                            "filename": filename,
+                            "chunk_id": index,
                         })
             except Exception as e:
                 print(f"Error reading {file_path}: {e}")

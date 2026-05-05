@@ -30,12 +30,24 @@ def _keyword_search(query, top_k=3):
 
     scored = []
     for doc in documents:
-        doc_tokens = Counter(_tokenize(doc["content"]))
-        score = sum(query_tokens[token] * doc_tokens.get(token, 0) for token in query_tokens)
+        score = _keyword_score(query_tokens, doc)
         scored.append((score, doc))
 
     scored.sort(key=lambda item: item[0], reverse=True)
     return [doc for score, doc in scored if score > 0][:top_k]
+
+
+def _keyword_score(query_tokens, doc):
+    searchable_text = f"{doc.get('filename', '')} {doc.get('content', '')}"
+    doc_tokens = Counter(_tokenize(searchable_text))
+    return sum(query_tokens[token] * doc_tokens.get(token, 0) for token in query_tokens)
+
+
+def _rerank_with_keyword_overlap(query, documents, top_k):
+    query_tokens = Counter(_tokenize(query))
+    scored = [(_keyword_score(query_tokens, doc), rank, doc) for rank, doc in enumerate(documents)]
+    scored.sort(key=lambda item: (item[0], -item[1]), reverse=True)
+    return [doc for _, _, doc in scored[:top_k]]
 
 
 def _persist_documents(documents):
@@ -109,13 +121,22 @@ def search(query, top_k=3):
             return []
 
         query_embedding = np.array(get_embeddings([query]), dtype="float32")
+        candidate_k = max(top_k * 3, top_k)
         if isinstance(index, np.ndarray):
             scores = np.dot(index, query_embedding[0])
-            ranked = np.argsort(scores)[::-1][:top_k]
-            return [documents[i] for i in ranked if 0 <= i < len(documents)]
+            ranked = np.argsort(scores)[::-1][:candidate_k]
+            candidates = [documents[i] for i in ranked if 0 <= i < len(documents)]
+            results = _rerank_with_keyword_overlap(query, candidates, top_k)
+            logger.info("Retrieved %s document chunks using numpy vectorstore: %s", len(results), [doc.get("source") for doc in results])
+            return results
 
-        _, indices = index.search(query_embedding, top_k)
-        return [documents[i] for i in indices[0] if 0 <= i < len(documents)]
+        _, indices = index.search(query_embedding, candidate_k)
+        candidates = [documents[i] for i in indices[0] if 0 <= i < len(documents)]
+        results = _rerank_with_keyword_overlap(query, candidates, top_k)
+        logger.info("Retrieved %s document chunks using FAISS: %s", len(results), [doc.get("source") for doc in results])
+        return results
     except Exception:
         logger.warning("Vector search failed; falling back to keyword search.", exc_info=True)
-        return _keyword_search(query, top_k=top_k)
+        results = _keyword_search(query, top_k=top_k)
+        logger.info("Retrieved %s document chunks using keyword fallback: %s", len(results), [doc.get("source") for doc in results])
+        return results
