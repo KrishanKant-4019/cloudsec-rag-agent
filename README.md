@@ -1,25 +1,116 @@
-# cloudsec-rag-agent
+# CloudSec RAG Agent
 
-CloudSec RAG Agent is an authenticated cloud security assistant with a FastAPI
-backend and a Streamlit frontend. It can review IAM policies, inspect cloud log
-snippets, flag common misconfiguration patterns, answer cloud-security questions
-from local RAG documents, and handle general assistant prompts through OpenAI.
+## Overview
+
+CloudSec RAG Agent is an authenticated AI assistant for cloud security analysis. It combines a FastAPI backend, a Streamlit chat interface, local retrieval-augmented generation (RAG), and security-focused analyzers for common cloud review workflows.
+
+The system helps users:
+
+- Review IAM policies for wildcard permissions and overly broad access.
+- Inspect cloud log snippets for suspicious actions.
+- Flag simple cloud misconfiguration patterns.
+- Ask cloud-security questions grounded in local knowledge-base documents.
+- Use OpenAI for generated responses when an API key is configured.
+
+At a high level, the RAG flow loads local security documents from `data/`, chunks them with metadata, retrieves relevant context, builds a structured prompt, and returns a concise assistant response.
 
 ## Features
 
-- FastAPI backend with health, auth, and protected agent endpoints.
-- Streamlit frontend with signup, login, persisted browser sessions, chat, file
-  upload, quick actions, and chat export.
-- Email/password authentication with bcrypt password hashes and JWT bearer
-  tokens.
-- SQLAlchemy user storage. SQLite is used locally by default, and another
-  database can be supplied with `DATABASE_URL`.
-- RAG over local files in `data/`, with FAISS when available and a fallback
-  vector/keyword search path when it is not.
-- Dedicated analyzers for IAM policy JSON, cloud log text, and basic
-  misconfiguration indicators.
-- Prompt-injection cleanup for common instruction-bypass patterns in user text
-  and uploaded text files.
+- **Authenticated API access**
+  - Email/password signup and login.
+  - Bcrypt password hashing.
+  - JWT bearer tokens for protected routes.
+  - Lightweight in-memory rate limiting for login and signup attempts.
+
+- **Cloud security assistant**
+  - Dedicated IAM policy analyzer.
+  - Basic cloud log analyzer.
+  - Misconfiguration detector for common risky patterns.
+  - General assistant fallback for non-cloud-security prompts.
+
+- **RAG pipeline**
+  - Loads supported text-like files from `data/`.
+  - Splits documents into overlapping chunks.
+  - Adds metadata such as source path, filename, and chunk id.
+  - Uses FAISS when available.
+  - Falls back to local hash embeddings and keyword search when needed.
+  - Detects stale vectorstore document schemas and rebuilds safely.
+
+- **Prompt and response reliability**
+  - Separates system instructions, retrieved context, sources, and user query.
+  - Treats user content and uploaded files as untrusted data.
+  - Makes model/API failures visible instead of silently returning fallback text.
+  - Includes clearer fallback responses when OpenAI is not configured.
+
+- **Deployment-ready configuration**
+  - `Procfile`, `render.yaml`, and `Dockerfile` included.
+  - Safe environment variable parsing with defaults.
+  - Production guard for missing `SECRET_KEY`.
+  - Production CORS wildcard protection.
+  - Configurable request, attachment, and concurrency limits.
+
+- **Streamlit frontend**
+  - Signup and login pages.
+  - Auth-gated chat workspace.
+  - File upload support with frontend-side attachment count validation.
+  - Chat history in session state.
+  - Chat export.
+
+## Architecture
+
+```text
+User
+  |
+  v
+Streamlit Frontend
+  |
+  v
+FastAPI Backend
+  |
+  +--> Auth Layer
+  |      - Signup
+  |      - Login
+  |      - JWT validation
+  |
+  +--> Agent Router
+  |      - IAM policy analyzer
+  |      - Log analyzer
+  |      - Misconfiguration detector
+  |      - RAG/general assistant path
+  |
+  +--> Retriever
+  |      - Load local docs
+  |      - Chunk documents
+  |      - Embed/query vectorstore
+  |      - Rerank retrieved context
+  |
+  +--> LLM Call
+         - OpenAI Responses API when configured
+         - Honest fallback when unavailable
+```
+
+### Request Flow
+
+1. The user signs up or logs in through Streamlit.
+2. The frontend stores the JWT session and sends authenticated requests to `/ask`.
+3. The backend validates the token and classifies the request.
+4. Structured analyzers handle IAM, log, and misconfiguration inputs.
+5. Cloud-security questions use the retriever to fetch relevant local context.
+6. The agent builds a structured prompt and calls the configured model.
+7. The response is returned to the frontend in the existing `{"answer": ...}` format.
+
+## Tech Stack
+
+| Area | Technology |
+| --- | --- |
+| Backend | FastAPI, Uvicorn, Pydantic |
+| Frontend | Streamlit, Requests |
+| Authentication | JWT, bcrypt, SQLAlchemy |
+| Storage | SQLite by default, configurable `DATABASE_URL` |
+| RAG / Retrieval | FAISS, NumPy, local hash embeddings, optional SentenceTransformer |
+| LLM | OpenAI Responses API |
+| Deployment | Render, Docker, Streamlit Community Cloud |
+| Configuration | `.env`, `python-dotenv`, environment variables |
 
 ## Project Structure
 
@@ -27,11 +118,13 @@ from local RAG documents, and handle general assistant prompts through OpenAI.
 app.py                    Backend entrypoint
 app/
   main.py                 FastAPI routes, auth dependencies, request models
-  agent.py                Agent routing, OpenAI calls, attachment handling
+  agent.py                Agent routing, prompt construction, model calls
   auth.py                 Password hashing and JWT helpers
-  database.py             SQLAlchemy user model and sessions
+  config.py               Environment configuration and production guards
+  database.py             SQLAlchemy user model and DB session handling
+  embeddings.py           Embedding helpers and hash fallback
   ingest.py               Vectorstore build entrypoint
-  retriever.py            RAG retrieval and vectorstore persistence
+  retriever.py            RAG retrieval, reranking, vectorstore persistence
   security/               IAM, log, and misconfiguration analyzers
 frontend/
   streamlit_app.py        Auth-gated chat workspace
@@ -39,111 +132,83 @@ frontend/
   auth_storage.py         Cookie persistence helpers
   pages/login.py          Login page
   pages/signup.py         Signup page
-data/                     Source documents and sample security inputs
-vectorstore/              Generated vector indexes and document cache
+data/                     Local knowledge-base and sample security inputs
+vectorstore/              Generated vector index and document cache
 ```
 
-## Requirements
+## Getting Started
 
-- Python 3.11 is recommended for local development and Streamlit Community
-  Cloud.
-- An OpenAI API key is required for live model responses.
-- The app can still return deterministic fallback output for some flows when
-  OpenAI is not configured, but production use should set `OPENAI_API_KEY`.
+### 1. Clone Repo
 
-## Local Setup
+```bash
+git clone <your-repo-url>
+cd cloudsec-rag-agent
+```
 
-Create and activate a virtual environment:
+### 2. Create A Virtual Environment
 
 ```bash
 python -m venv .venv
+```
+
+Windows:
+
+```bash
 .venv\Scripts\activate
 ```
 
-Install backend dependencies:
+macOS/Linux:
+
+```bash
+source .venv/bin/activate
+```
+
+### 3. Install Dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
 
-Copy the example environment file:
+### 4. Setup Environment Variables
+
+Copy the example file:
 
 ```bash
 copy .env.example .env
 ```
 
-Edit `.env` and set at least:
+On macOS/Linux:
+
+```bash
+cp .env.example .env
+```
+
+Set at least:
 
 ```text
 OPENAI_API_KEY=sk-...
 SECRET_KEY=replace-with-a-long-random-secret
 CLOUDSEC_API_URL=http://127.0.0.1:8000
+ENVIRONMENT=development
 ```
 
-Start the backend:
+OpenAI is required for live generated model responses. Without it, the app still returns clear fallback messages for supported flows.
 
-```bash
-python app.py
-```
-
-In a second terminal, start the frontend:
-
-```bash
-streamlit run frontend/streamlit_app.py
-```
-
-Open the Streamlit URL, create an account, log in, and use the chat workspace.
-
-## RAG Data And Ingestion
-
-The retriever reads supported text-like files from `data/` and persists indexes
-under `vectorstore/`.
-
-Build or refresh the vectorstore manually:
+### 5. Build Or Refresh The Vectorstore
 
 ```bash
 python -m app.ingest
 ```
 
-Supported source formats include `.txt`, `.md`, `.json`, `.yaml`, `.yml`,
-`.log`, `.cfg`, `.conf`, `.ini`, `.tf`, `.hcl`, `.py`, `.js`, `.ts`, `.sql`,
-`.xml`, and `.csv`.
+Run this when you add or update files under `data/`.
 
-If FAISS is available, the app writes `vectorstore/faiss.index`. If FAISS or the
-local sentence-transformer model is unavailable, the code falls back to local
-hash embeddings and keyword search so the app can still run.
+### 6. Run Backend
 
-## Environment Variables
+```bash
+python app.py
+```
 
-| Variable | Required | Default | Purpose |
-| --- | --- | --- | --- |
-| `OPENAI_API_KEY` | Production yes | Empty | API key for OpenAI Responses API calls. |
-| `OPENAI_MODEL` | No | `gpt-4.1-mini` | Model used by the backend. |
-| `OPENAI_BASE_URL` | No | `https://api.openai.com/v1` | Base URL for OpenAI-compatible Responses API. |
-| `OPENAI_MAX_OUTPUT_TOKENS` | No | `400` | Maximum model output tokens. |
-| `REQUEST_TIMEOUT_SECONDS` | No | `45` | Backend timeout for model calls. |
-| `SECRET_KEY` | Production yes | Random per process | JWT signing key. Set this in production. |
-| `ACCESS_TOKEN_EXPIRE_MINUTES` | No | `1440` | JWT lifetime in minutes. |
-| `DATABASE_URL` | No | `sqlite:///data/users.db` | SQLAlchemy database URL for user accounts. |
-| `CORS_ORIGINS` | Production recommended | `*` | Comma-separated allowed frontend origins. |
-| `CLOUDSEC_API_URL` | Frontend yes | Render backend URL in frontend client | Backend URL used by the Streamlit app. |
-| `BACKEND_URL` | No | `http://127.0.0.1:8000` | Alternate local backend URL setting. |
-| `HOST` | No | `0.0.0.0` | Backend bind host. |
-| `PORT` | No | `8000` | Backend bind port. |
-| `ENVIRONMENT` | No | `development` | Environment label returned by the root endpoint. |
-| `DATA_DIR` | No | `data` | Directory containing RAG source documents. |
-| `VECTORSTORE_DIR` | No | `vectorstore` | Directory for generated vector indexes. |
-| `MAX_QUERY_CHARS` | No | `4000` | Maximum `/ask` query length. |
-| `MAX_ATTACHMENT_CHARS` | No | `12000` | Maximum text content per attachment. |
-| `MAX_ATTACHMENT_COUNT` | No | `5` | Maximum attachments per `/ask` request. |
-
-Important: if `SECRET_KEY` is not set, the backend generates a new signing key
-when the process starts. That is convenient locally, but it can invalidate user
-sessions after restarts and should not be used for production deployments.
-
-## API
-
-Base backend URL:
+The backend starts on:
 
 ```text
 http://127.0.0.1:8000
@@ -151,11 +216,55 @@ http://127.0.0.1:8000
 
 Health check:
 
+```text
+http://127.0.0.1:8000/health
+```
+
+### 7. Run Frontend
+
+In a second terminal:
+
+```bash
+streamlit run frontend/streamlit_app.py
+```
+
+Open the Streamlit URL, create an account, log in, and start using the chat workspace.
+
+## Environment Variables
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `OPENAI_API_KEY` | Empty | API key for OpenAI Responses API calls. |
+| `OPENAI_MODEL` | `gpt-4.1-mini` | Model used by the backend. |
+| `OPENAI_BASE_URL` | `https://api.openai.com/v1` | Base URL for OpenAI-compatible Responses API. |
+| `OPENAI_MAX_OUTPUT_TOKENS` | `400` | Maximum model output tokens. |
+| `REQUEST_TIMEOUT_SECONDS` | `45` | Backend model request timeout. |
+| `SECRET_KEY` | Random in dev | JWT signing key. Required when `ENVIRONMENT=production`. |
+| `ACCESS_TOKEN_EXPIRE_MINUTES` | `1440` | JWT lifetime in minutes. |
+| `DATABASE_URL` | `sqlite:///data/users.db` | SQLAlchemy user database URL. |
+| `CORS_ORIGINS` | `*` in dev | Comma-separated allowed frontend origins. Wildcard is blocked in production. |
+| `CLOUDSEC_API_URL` | Render backend URL in frontend | Backend URL used by Streamlit. |
+| `HOST` | `0.0.0.0` | Backend bind host. |
+| `PORT` | `8000` | Backend bind port. |
+| `ENVIRONMENT` | `development` | Runtime environment label and guard mode. |
+| `DATA_DIR` | `data` | Directory containing RAG source documents. |
+| `VECTORSTORE_DIR` | `vectorstore` | Directory for generated vectorstore files. |
+| `MAX_QUERY_CHARS` | `4000` | Maximum `/ask` query length. |
+| `MAX_ATTACHMENT_CHARS` | `12000` | Maximum text content per attachment. |
+| `MAX_ATTACHMENT_COUNT` | `5` | Maximum attachments per request. |
+| `MAX_CONCURRENT_ASK_REQUESTS` | `4` | In-process concurrency guard for `/ask`. |
+| `ENABLE_SENTENCE_TRANSFORMER` | Disabled | Enables local SentenceTransformer loading when explicitly set. |
+| `SENTENCE_TRANSFORMER_MODEL_PATH` | Empty | Optional local path for SentenceTransformer model files. |
+
+## API Overview
+
+### Health
+
 ```http
 GET /health
 ```
 
-Signup:
+### Signup
 
 ```http
 POST /signup
@@ -167,7 +276,7 @@ Content-Type: application/json
 }
 ```
 
-Login:
+### Login
 
 ```http
 POST /login
@@ -179,7 +288,7 @@ Content-Type: application/json
 }
 ```
 
-Ask the agent:
+### Ask The Agent
 
 ```http
 POST /ask
@@ -200,109 +309,122 @@ Content-Type: application/json
 }
 ```
 
-`/ask` requires either a non-empty `query` or at least one attachment.
+`/ask` requires a valid JWT and either a non-empty query or at least one attachment.
 
-## Attachment Behavior
+## Example Usage
 
-The frontend accepts text, JSON/data, document, image, video, audio, archive,
-and other file types. Text-like uploads are decoded and sent to the backend for
-analysis. Image, audio, and video uploads are accepted in the UI, but this
-version does not inspect their media content directly unless usable text is
-included separately.
+### Example Query
 
-The backend enforces attachment count, attachment text length, and query length
-limits through environment variables.
+```text
+Summarize AWS IAM best practices for least privilege and risky wildcard permissions.
+```
 
-## Backend Deployment On Render
+### Example Response Shape
 
-This repository includes `render.yaml` and a `Procfile` that start the backend
-with:
+```text
+- Use narrowly scoped IAM actions and resources instead of wildcard permissions.
+- Review policies for broad access such as "*" on Action or Resource.
+- Confidence: Medium. The answer is based on retrieved local cloud-security context.
+```
+
+Actual responses depend on the contents of `data/`, the vectorstore state, and whether `OPENAI_API_KEY` is configured.
+
+## Deployment
+
+### Backend On Render
+
+This repository includes `render.yaml`, `Procfile`, and `Dockerfile`.
+
+Default backend start command:
 
 ```bash
 python app.py
 ```
 
-For Render, set these environment variables on the backend service:
+Recommended production environment variables:
 
 ```text
+ENVIRONMENT=production
 OPENAI_API_KEY=sk-...
 SECRET_KEY=replace-with-a-long-random-secret
 OPENAI_MODEL=gpt-4.1-mini
 CORS_ORIGINS=https://your-streamlit-app-url.streamlit.app
+CLOUDSEC_API_URL=https://your-backend-url.onrender.com
 ```
 
-For persistent production user accounts, configure `DATABASE_URL` to point to a
-managed database. If you rely on the default SQLite database on an ephemeral
-service, user accounts may not survive rebuilds or instance replacement.
+For durable production accounts, configure `DATABASE_URL` to a managed database. The default SQLite database is suitable for local development, but may not persist on ephemeral hosting.
 
-After changing environment variables, redeploy or restart the backend service.
+### Frontend On Streamlit Community Cloud
 
-The current Render backend URL used by the frontend defaults to:
-
-```text
-https://cloudsec-rag-agent.onrender.com
-```
-
-Health check:
-
-```text
-https://cloudsec-rag-agent.onrender.com/health
-```
-
-## Frontend Deployment On Streamlit Community Cloud
-
-Recommended platform: Streamlit Community Cloud.
-
-Use this app entrypoint:
+Use this entrypoint:
 
 ```text
 frontend/streamlit_app.py
 ```
 
-The frontend has its own lightweight dependency file:
+The frontend has a lightweight dependency file:
 
 ```text
 frontend/requirements.txt
 ```
 
-Streamlit Community Cloud checks the entrypoint directory before the repository
-root, so this keeps the frontend build from installing backend/RAG packages like
-FAISS, sentence-transformers, LangChain, and NumPy.
-
-Set this secret or environment variable in the frontend deployment:
+Set:
 
 ```text
-CLOUDSEC_API_URL=https://cloudsec-rag-agent.onrender.com
+CLOUDSEC_API_URL=https://your-backend-url.onrender.com
 ```
 
-Choose Python 3.11 from Streamlit Community Cloud's deploy/redeploy advanced
-settings. Community Cloud does not use `runtime.txt` to select Python.
+### Frontend On Render
 
-If you deploy the frontend to Render instead, use this start command:
+If deploying the Streamlit frontend to Render:
 
 ```bash
 streamlit run frontend/streamlit_app.py --server.address 0.0.0.0 --server.port $PORT
 ```
 
-## Troubleshooting
+## Security Considerations
 
-- `401 Unauthorized` from `/ask`: log in again and send the returned token as
-  `Authorization: Bearer <token>`.
-- `Email already registered`: use the existing account or remove/reset the local
-  SQLite database during local testing.
-- `The OpenAI API is not configured or could not be reached`: set
-  `OPENAI_API_KEY`, confirm `OPENAI_BASE_URL`, and restart the backend.
-- Frontend cannot reach backend: verify `CLOUDSEC_API_URL` in the Streamlit
-  environment and check the backend `/health` endpoint.
-- Login sessions disappear after restart: set a stable `SECRET_KEY`.
-- New files in `data/` are not reflected in RAG answers: run
-  `python -m app.ingest` or restart so the retriever can rebuild/load the index.
+- `SECRET_KEY` must be stable and private in production.
+- `ENVIRONMENT=production` enforces a configured `SECRET_KEY`.
+- JWTs are required for protected `/ask` access.
+- Passwords are hashed with bcrypt before storage.
+- Signup and login include lightweight rate limiting.
+- Production CORS should use explicit frontend origins, not `*`.
+- API keys and secrets should be configured through environment variables, never committed.
+- Local SQLite is intended for development. Use a managed database for durable production users.
+- Uploaded media files can be previewed in the frontend, but image/audio/video content is not directly inspected by the backend in this version.
+
+## Improvements Made
+
+Recent production-hardening and AI-quality work includes:
+
+- Stable production JWT secret enforcement.
+- Docker ignore rule to avoid packaging local SQLite databases.
+- Auth rate limiting for signup and login.
+- Clear model/API failure messages instead of silent fallbacks.
+- Safer integer environment parsing.
+- Production CORS wildcard protection.
+- `/ask` concurrency guard to reduce overload risk.
+- RAG chunking with overlap and metadata.
+- Vectorstore schema detection and safe rebuild path.
+- Retrieval reranking using lightweight keyword overlap.
+- Structured prompts with separate instructions, context, sources, and user query.
+- Logging for retrieval results, model calls, and fallback triggers.
+- Frontend attachment-count validation aligned with backend limits.
+- Cold-start optimization by using hash embeddings by default unless SentenceTransformer is explicitly enabled.
+
+## Future Improvements
+
+- Add automated tests for auth, RAG retrieval, and frontend/backend contracts.
+- Add richer policy checks for IAM and cloud misconfiguration analysis.
+- Add managed database deployment examples.
+- Add source citations in the frontend response UI.
+- Add support for extracting text from PDFs and office documents.
+- Add optional evaluation examples for retrieval quality.
 
 ## Limitations
 
-- Media files can be uploaded, but image/audio/video content is not directly
-  inspected by the backend in this version.
-- The built-in IAM, log, and misconfiguration analyzers are heuristic helpers,
-  not a replacement for a full cloud security scanner.
-- Local SQLite is suitable for development. Use a managed database for durable
-  production accounts.
+- Built-in security analyzers are heuristic helpers, not a replacement for a full cloud security scanner.
+- Media uploads are accepted by the UI, but image/audio/video content is not directly analyzed by the backend.
+- RAG quality depends on the local documents available under `data/`.
+- OpenAI-generated responses require a valid `OPENAI_API_KEY`.
