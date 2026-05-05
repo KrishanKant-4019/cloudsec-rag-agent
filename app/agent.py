@@ -160,10 +160,18 @@ def _extract_output_text(payload: dict) -> str:
     return "\n".join(texts).strip()
 
 
+def _model_unavailable(reason: str, fallback_message: str) -> str:
+    return (
+        "Model response unavailable: "
+        f"{reason}\n\n"
+        f"{fallback_message}"
+    )
+
+
 def generate_with_openai(prompt: str, fallback_message: str) -> str:
     if not OPENAI_API_KEY:
         logger.warning("OpenAI request skipped: OPENAI_API_KEY is not set.")
-        return fallback_message
+        return _model_unavailable("OPENAI_API_KEY is not configured.", fallback_message)
 
     try:
         response = requests.post(
@@ -190,10 +198,10 @@ def generate_with_openai(prompt: str, fallback_message: str) -> str:
         output_text = _extract_output_text(data)
         if not output_text:
             logger.warning("OpenAI response did not include output text: response=%s", response.text[:1000])
-        return output_text or fallback_message
+        return output_text or _model_unavailable("The API returned no output text.", fallback_message)
     except requests.RequestException as exc:
         logger.warning("OpenAI request error: %s", exc, exc_info=True)
-        return fallback_message
+        return _model_unavailable("The API request failed.", fallback_message)
 
 
 def cloud_rag_answer(query: str, attachments=None) -> str:
