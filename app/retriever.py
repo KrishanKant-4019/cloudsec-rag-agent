@@ -1,6 +1,7 @@
 import os
 import pickle
 import re
+import logging
 from collections import Counter
 from functools import lru_cache
 
@@ -11,6 +12,7 @@ from app.embeddings import get_embeddings
 from app.utils import load_documents
 
 
+logger = logging.getLogger(__name__)
 settings = get_settings()
 VECTORSTORE_DIR = str(settings["vectorstore_dir"])
 LEGACY_VECTOR_PATH = os.path.join(VECTORSTORE_DIR, "faiss_index.pkl")
@@ -67,6 +69,7 @@ def create_vectorstore():
         _load_vectorstore.cache_clear()
         return index, documents
     except Exception:
+        logger.warning("FAISS vectorstore creation failed; falling back to numpy embeddings.", exc_info=True)
         np.save(os.path.join(VECTORSTORE_DIR, "embeddings.npy"), embeddings)
         _load_vectorstore.cache_clear()
         return embeddings, documents
@@ -80,7 +83,7 @@ def _load_vectorstore():
 
             return faiss.read_index(INDEX_PATH), _load_persisted_documents()
         except Exception:
-            pass
+            logger.warning("Failed to load FAISS vectorstore; trying fallback vectorstore.", exc_info=True)
 
     embeddings_path = os.path.join(VECTORSTORE_DIR, "embeddings.npy")
     if os.path.exists(embeddings_path) and os.path.exists(DOCS_PATH):
@@ -91,7 +94,7 @@ def _load_vectorstore():
             with open(LEGACY_VECTOR_PATH, "rb") as file_obj:
                 return pickle.load(file_obj)
         except Exception:
-            pass
+            logger.warning("Failed to load legacy vectorstore pickle; rebuilding vectorstore.", exc_info=True)
 
     return create_vectorstore()
 
@@ -114,4 +117,5 @@ def search(query, top_k=3):
         _, indices = index.search(query_embedding, top_k)
         return [documents[i] for i in indices[0] if 0 <= i < len(documents)]
     except Exception:
+        logger.warning("Vector search failed; falling back to keyword search.", exc_info=True)
         return _keyword_search(query, top_k=top_k)

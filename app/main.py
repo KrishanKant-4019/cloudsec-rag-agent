@@ -1,5 +1,6 @@
 from contextlib import asynccontextmanager
 from collections import defaultdict, deque
+from threading import BoundedSemaphore
 from time import monotonic
 from typing import Annotated, List, Optional
 
@@ -20,6 +21,7 @@ bearer_scheme = HTTPBearer(auto_error=False)
 AUTH_RATE_LIMIT_WINDOW_SECONDS = 60
 AUTH_RATE_LIMIT_MAX_ATTEMPTS = 10
 auth_rate_limits = defaultdict(deque)
+ask_semaphore = BoundedSemaphore(int(settings["max_concurrent_ask_requests"]))
 
 
 @asynccontextmanager
@@ -171,6 +173,9 @@ def ask_agent(request: QueryRequest, _: User = Depends(get_current_user)):
     if not request.query and not request.attachments:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Provide a query or at least one attachment.")
 
+    if not ask_semaphore.acquire(blocking=False):
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="The agent is busy. Try again shortly.")
+
     try:
         response = run_agent(
             request.query,
@@ -184,3 +189,5 @@ def ask_agent(request: QueryRequest, _: User = Depends(get_current_user)):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="The agent could not process the request.",
         )
+    finally:
+        ask_semaphore.release()
