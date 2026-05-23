@@ -11,10 +11,15 @@ from app.security.misconfig_detector import detect_misconfig
 
 
 settings = get_settings()
+LLM_PROVIDER = str(settings["llm_provider"])
 OPENAI_API_KEY = str(settings["openai_api_key"])
 OPENAI_BASE_URL = str(settings["openai_base_url"])
 OPENAI_MODEL = str(settings["openai_model"])
 OPENAI_MAX_OUTPUT_TOKENS = int(settings["openai_max_output_tokens"])
+GEMINI_API_KEY = str(settings["gemini_api_key"])
+GEMINI_BASE_URL = str(settings["gemini_base_url"])
+GEMINI_MODEL = str(settings["gemini_model"])
+GEMINI_MAX_OUTPUT_TOKENS = int(settings["gemini_max_output_tokens"])
 REQUEST_TIMEOUT_SECONDS = int(settings["request_timeout_seconds"])
 logger = logging.getLogger(__name__)
 
@@ -142,8 +147,8 @@ def has_visual_attachments(attachments=None) -> bool:
 @lru_cache(maxsize=128)
 def _cached_general_fallback(query: str) -> str:
     return (
-        "The OpenAI API is not configured or could not be reached.\n\n"
-        "Please set OPENAI_API_KEY and retry.\n\n"
+        "The configured model API is not available.\n\n"
+        "Please check your LLM_PROVIDER and API key settings, then retry.\n\n"
         f"Request summary:\n{query[:500]}"
     )
 
@@ -160,6 +165,16 @@ def _extract_output_text(payload: dict) -> str:
     return "\n".join(texts).strip()
 
 
+def _extract_gemini_text(payload: dict) -> str:
+    texts = []
+    for candidate in payload.get("candidates", []):
+        content = candidate.get("content") or {}
+        for part in content.get("parts", []):
+            if part.get("text"):
+                texts.append(str(part["text"]))
+    return "\n".join(texts).strip()
+
+
 def _model_unavailable(reason: str, fallback_message: str) -> str:
     logger.warning("Model fallback triggered: %s", reason)
     return (
@@ -167,6 +182,50 @@ def _model_unavailable(reason: str, fallback_message: str) -> str:
         f"{reason}\n\n"
         f"{fallback_message}"
     )
+
+
+def generate_with_gemini(prompt: str, fallback_message: str) -> str:
+    if not GEMINI_API_KEY:
+        logger.warning("Gemini request skipped: GEMINI_API_KEY is not set.")
+        return _model_unavailable("GEMINI_API_KEY is not configured.", fallback_message)
+
+    try:
+        logger.info("Sending Gemini request: model=%s max_output_tokens=%s", GEMINI_MODEL, GEMINI_MAX_OUTPUT_TOKENS)
+        response = requests.post(
+            f"{GEMINI_BASE_URL}/models/{GEMINI_MODEL}:generateContent",
+            headers={
+                "x-goog-api-key": GEMINI_API_KEY,
+                "Content-Type": "application/json",
+            },
+            json={
+                "contents": [
+                    {
+                        "role": "user",
+                        "parts": [{"text": prompt}],
+                    }
+                ],
+                "generationConfig": {
+                    "maxOutputTokens": GEMINI_MAX_OUTPUT_TOKENS,
+                },
+            },
+            timeout=REQUEST_TIMEOUT_SECONDS,
+        )
+        logger.info("Gemini response received: status=%s", response.status_code)
+        if response.status_code >= 400:
+            logger.warning(
+                "Gemini request failed: status=%s, response=%s",
+                response.status_code,
+                response.text[:1000],
+            )
+        response.raise_for_status()
+        data = response.json()
+        output_text = _extract_gemini_text(data)
+        if not output_text:
+            logger.warning("Gemini response did not include output text: response=%s", response.text[:1000])
+        return output_text or _model_unavailable("The API returned no output text.", fallback_message)
+    except requests.RequestException as exc:
+        logger.warning("Gemini request error: %s", exc, exc_info=True)
+        return _model_unavailable("The API request failed.", fallback_message)
 
 
 def generate_with_openai(prompt: str, fallback_message: str) -> str:
@@ -205,6 +264,16 @@ def generate_with_openai(prompt: str, fallback_message: str) -> str:
     except requests.RequestException as exc:
         logger.warning("OpenAI request error: %s", exc, exc_info=True)
         return _model_unavailable("The API request failed.", fallback_message)
+
+
+def generate_response(prompt: str, fallback_message: str) -> str:
+    if LLM_PROVIDER == "gemini":
+        return generate_with_gemini(prompt, fallback_message)
+    if LLM_PROVIDER == "openai":
+        return generate_with_openai(prompt, fallback_message)
+
+    logger.warning("Unknown LLM_PROVIDER=%s; using fallback response.", LLM_PROVIDER)
+    return _model_unavailable(f"Unsupported LLM_PROVIDER '{LLM_PROVIDER}'.", fallback_message)
 
 
 def cloud_rag_answer(query: str, attachments=None) -> str:
@@ -252,7 +321,7 @@ USER QUERY:
         "I could not generate a model-written RAG answer, but these retrieved source excerpts may help.\n\n"
         f"Confidence: Low\n\nSources:\n{sources}\n\nContext excerpts:\n{context[:2500]}"
     )
-    return generate_with_openai(prompt, fallback)
+    return generate_response(prompt, fallback)
 
 
 def general_answer(query: str, attachments=None) -> str:
@@ -273,7 +342,7 @@ Do not mention model vendors, training details, or platform provenance.
 {attachment_note}
 Question: {query}
 """
-    return generate_with_openai(prompt, _cached_general_fallback(query))
+    return generate_response(prompt, _cached_general_fallback(query))
 
 
 def run_agent(query: str, attachments=None) -> str:

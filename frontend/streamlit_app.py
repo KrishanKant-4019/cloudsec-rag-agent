@@ -37,7 +37,9 @@ DATA_EXTENSIONS     = {".json", ".jsonl", ".ndjson", ".parquet", ".pkl"}
 MAX_TEXT_CHARS     = 12000
 TEXT_PREVIEW_CHARS = 800
 MAX_ATTACHMENT_COUNT = get_int_env("MAX_ATTACHMENT_COUNT", 5)
-MODEL_NAME         = os.getenv("OPENAI_MODEL", "gpt-4.1-mini")
+LLM_PROVIDER       = os.getenv("LLM_PROVIDER", "gemini").strip().lower()
+MODEL_NAME         = os.getenv("GEMINI_MODEL", "gemini-2.5-flash") if LLM_PROVIDER == "gemini" else os.getenv("OPENAI_MODEL", "gpt-4.1-mini")
+MODEL_LABEL        = f"{LLM_PROVIDER} / {MODEL_NAME}" if LLM_PROVIDER else MODEL_NAME
 
 QUICK_ACTIONS = [
     {"icon": "🔍", "label": "Audit IAM Policy",    "prompt": "Analyze this IAM policy for privilege escalation risks and least-privilege violations."},
@@ -430,7 +432,7 @@ def render_sidebar():
         </div>
         """, unsafe_allow_html=True)
 
-        st.markdown(f'<div class="model-badge">🤖 &nbsp;{MODEL_NAME}</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="model-badge">🤖 &nbsp;{MODEL_LABEL}</div>', unsafe_allow_html=True)
         st.divider()
 
         # Upload
@@ -539,7 +541,7 @@ if not active_chat["messages"]:
     st.markdown(f"""
     <div class="hero">
       <span class="hero-icon">⛨</span>
-      <div class="live-badge"><span class="live-dot"></span>&nbsp; Connected · {MODEL_NAME}</div>
+      <div class="live-badge"><span class="live-dot"></span>&nbsp; Connected · {MODEL_LABEL}</div>
       <h1 class="hero-title">What can I help you secure?</h1>
     </div>
     """, unsafe_allow_html=True)

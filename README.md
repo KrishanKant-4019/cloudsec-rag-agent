@@ -10,7 +10,7 @@ The system helps users:
 - Inspect cloud log snippets for suspicious actions.
 - Flag simple cloud misconfiguration patterns.
 - Ask cloud-security questions grounded in local knowledge-base documents.
-- Use OpenAI for generated responses when an API key is configured.
+- Use Gemini by default for generated responses, with optional OpenAI fallback.
 
 At a high level, the RAG flow loads local security documents from `data/`, chunks them with metadata, retrieves relevant context, builds a structured prompt, and returns a concise assistant response.
 
@@ -40,7 +40,7 @@ At a high level, the RAG flow loads local security documents from `data/`, chunk
   - Separates system instructions, retrieved context, sources, and user query.
   - Treats user content and uploaded files as untrusted data.
   - Makes model/API failures visible instead of silently returning fallback text.
-  - Includes clearer fallback responses when OpenAI is not configured.
+  - Includes clearer fallback responses when the selected model provider is not configured.
 
 - **Deployment-ready configuration**
   - `Procfile`, `render.yaml`, and `Dockerfile` included.
@@ -85,7 +85,8 @@ FastAPI Backend
   |      - Rerank retrieved context
   |
   +--> LLM Call
-         - OpenAI Responses API when configured
+         - Gemini API by default
+         - Optional OpenAI Responses API fallback
          - Honest fallback when unavailable
 ```
 
@@ -108,7 +109,7 @@ FastAPI Backend
 | Authentication | JWT, bcrypt, SQLAlchemy |
 | Storage | SQLite by default, configurable `DATABASE_URL` |
 | RAG / Retrieval | FAISS, NumPy, local hash embeddings, optional SentenceTransformer |
-| LLM | OpenAI Responses API |
+| LLM | Gemini API by default, optional OpenAI Responses API |
 | Deployment | Render, Docker, Streamlit Community Cloud |
 | Configuration | `.env`, `python-dotenv`, environment variables |
 
@@ -186,13 +187,15 @@ cp .env.example .env
 Set at least:
 
 ```text
-OPENAI_API_KEY=sk-...
+LLM_PROVIDER=gemini
+GEMINI_API_KEY=your-gemini-api-key
+GEMINI_MODEL=gemini-2.5-flash
 SECRET_KEY=replace-with-a-long-random-secret
 CLOUDSEC_API_URL=http://127.0.0.1:8000
 ENVIRONMENT=development
 ```
 
-OpenAI is required for live generated model responses. Without it, the app still returns clear fallback messages for supported flows.
+Gemini is used by default for live generated model responses. Without a configured model API key, the app still returns clear fallback messages for supported flows.
 
 ### 5. Build Or Refresh The Vectorstore
 
@@ -234,8 +237,13 @@ Open the Streamlit URL, create an account, log in, and start using the chat work
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `OPENAI_API_KEY` | Empty | API key for OpenAI Responses API calls. |
-| `OPENAI_MODEL` | `gpt-4.1-mini` | Model used by the backend. |
+| `LLM_PROVIDER` | `gemini` | Model provider to use: `gemini` or `openai`. |
+| `GEMINI_API_KEY` | Empty | API key for Gemini API calls. |
+| `GEMINI_MODEL` | `gemini-2.5-flash` | Gemini model used by the backend. |
+| `GEMINI_BASE_URL` | `https://generativelanguage.googleapis.com/v1beta` | Base URL for Gemini API calls. |
+| `GEMINI_MAX_OUTPUT_TOKENS` | `400` | Maximum Gemini output tokens. |
+| `OPENAI_API_KEY` | Empty | Optional API key for OpenAI Responses API calls when `LLM_PROVIDER=openai`. |
+| `OPENAI_MODEL` | `gpt-4.1-mini` | Optional OpenAI model used when `LLM_PROVIDER=openai`. |
 | `OPENAI_BASE_URL` | `https://api.openai.com/v1` | Base URL for OpenAI-compatible Responses API. |
 | `OPENAI_MAX_OUTPUT_TOKENS` | `400` | Maximum model output tokens. |
 | `REQUEST_TIMEOUT_SECONDS` | `45` | Backend model request timeout. |
@@ -327,7 +335,7 @@ Summarize AWS IAM best practices for least privilege and risky wildcard permissi
 - Confidence: Medium. The answer is based on retrieved local cloud-security context.
 ```
 
-Actual responses depend on the contents of `data/`, the vectorstore state, and whether `OPENAI_API_KEY` is configured.
+Actual responses depend on the contents of `data/`, the vectorstore state, and whether the selected provider API key is configured.
 
 ## Deployment
 
@@ -345,9 +353,10 @@ Recommended production environment variables:
 
 ```text
 ENVIRONMENT=production
-OPENAI_API_KEY=sk-...
+LLM_PROVIDER=gemini
+GEMINI_API_KEY=your-gemini-api-key
+GEMINI_MODEL=gemini-2.5-flash
 SECRET_KEY=replace-with-a-long-random-secret
-OPENAI_MODEL=gpt-4.1-mini
 CORS_ORIGINS=https://your-streamlit-app-url.streamlit.app
 CLOUDSEC_API_URL=https://your-backend-url.onrender.com
 ```
@@ -427,4 +436,4 @@ Recent production-hardening and AI-quality work includes:
 - Built-in security analyzers are heuristic helpers, not a replacement for a full cloud security scanner.
 - Media uploads are accepted by the UI, but image/audio/video content is not directly analyzed by the backend.
 - RAG quality depends on the local documents available under `data/`.
-- OpenAI-generated responses require a valid `OPENAI_API_KEY`.
+- Model-generated responses require a valid API key for the selected `LLM_PROVIDER`.
