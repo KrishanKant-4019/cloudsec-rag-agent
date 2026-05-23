@@ -19,10 +19,19 @@ LEGACY_VECTOR_PATH = os.path.join(VECTORSTORE_DIR, "faiss_index.pkl")
 INDEX_PATH = os.path.join(VECTORSTORE_DIR, "faiss.index")
 DOCS_PATH = os.path.join(VECTORSTORE_DIR, "documents.pkl")
 REQUIRED_DOCUMENT_KEYS = {"content", "source", "source_path", "filename", "chunk_id"}
+STOPWORDS = {
+    "a", "an", "and", "are", "as", "at", "be", "by", "for", "from", "how",
+    "i", "in", "is", "it", "of", "on", "or", "should", "the", "this", "to",
+    "what", "when", "where", "which", "who", "why", "with",
+}
 
 
 def _tokenize(text):
     return re.findall(r"[a-zA-Z0-9_]+", text.lower())
+
+
+def _meaningful_tokens(text):
+    return [token for token in _tokenize(text) if len(token) > 2 and token not in STOPWORDS]
 
 
 def _keyword_search(query, top_k=3):
@@ -44,11 +53,22 @@ def _keyword_score(query_tokens, doc):
     return sum(query_tokens[token] * doc_tokens.get(token, 0) for token in query_tokens)
 
 
+def _attach_relevance(query, documents):
+    query_terms = set(_meaningful_tokens(query))
+    for doc in documents:
+        doc_terms = set(_meaningful_tokens(f"{doc.get('filename', '')} {doc.get('content', '')}"))
+        overlap = query_terms.intersection(doc_terms)
+        doc["keyword_overlap"] = len(overlap)
+        doc["keyword_overlap_terms"] = sorted(overlap)
+        doc["relevance_score"] = len(overlap) / max(len(query_terms), 1)
+    return documents
+
+
 def _rerank_with_keyword_overlap(query, documents, top_k):
     query_tokens = Counter(_tokenize(query))
     scored = [(_keyword_score(query_tokens, doc), rank, doc) for rank, doc in enumerate(documents)]
     scored.sort(key=lambda item: (item[0], -item[1]), reverse=True)
-    return [doc for _, _, doc in scored[:top_k]]
+    return _attach_relevance(query, [doc for _, _, doc in scored[:top_k]])
 
 
 def _persist_documents(documents):

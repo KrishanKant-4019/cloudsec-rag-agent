@@ -35,6 +35,7 @@ At a high level, the RAG flow loads local security documents from `data/`, chunk
   - Uses FAISS when available.
   - Falls back to local hash embeddings and keyword search when needed.
   - Detects stale vectorstore document schemas and rebuilds safely.
+  - Includes source references in cloud-security RAG answers.
 
 - **Prompt and response reliability**
   - Separates system instructions, retrieved context, sources, and user query.
@@ -96,9 +97,11 @@ FastAPI Backend
 2. The frontend stores the JWT session and sends authenticated requests to `/ask`.
 3. The backend validates the token and classifies the request.
 4. Structured analyzers handle IAM, log, and misconfiguration inputs.
-5. Cloud-security questions use the retriever to fetch relevant local context.
-6. The agent builds a structured prompt and calls the configured model.
+5. Cloud-security questions use the retriever to fetch relevant local context from `data/`.
+6. The agent builds a structured prompt with retrieved chunks, source labels, and retrieval quality hints.
 7. The response is returned to the frontend in the existing `{"answer": ...}` format.
+
+General non-cloud questions are answered directly by the configured model provider. Cloud/security questions use RAG first so answers are grounded in local documents.
 
 ## Tech Stack
 
@@ -134,6 +137,7 @@ frontend/
   pages/login.py          Login page
   pages/signup.py         Signup page
 data/                     Local knowledge-base and sample security inputs
+  aws_docs/               Curated cloud security knowledge-base files
 vectorstore/              Generated vector index and document cache
 ```
 
@@ -205,6 +209,8 @@ python -m app.ingest
 
 Run this when you add or update files under `data/`.
 
+The RAG index is generated from local files. If you add a file such as `data/aws_docs/s3_security.txt`, rebuild the vectorstore before testing questions about that topic.
+
 ### 6. Run Backend
 
 ```bash
@@ -263,6 +269,26 @@ Open the Streamlit URL, create an account, log in, and start using the chat work
 | `MAX_CONCURRENT_ASK_REQUESTS` | `4` | In-process concurrency guard for `/ask`. |
 | `ENABLE_SENTENCE_TRANSFORMER` | Disabled | Enables local SentenceTransformer loading when explicitly set. |
 | `SENTENCE_TRANSFORMER_MODEL_PATH` | Empty | Optional local path for SentenceTransformer model files. |
+
+Hash embeddings are the default because they work without downloads. For better retrieval, set `ENABLE_SENTENCE_TRANSFORMER=true` only when `all-MiniLM-L6-v2` or your configured local model path is already available on disk. The app loads SentenceTransformer with `local_files_only=True`, so production startup does not require internet access.
+
+## RAG Knowledge Base
+
+The local knowledge base lives under `data/`. The `data/aws_docs/` folder contains focused cloud security notes such as IAM security, S3 security, VPC networking, CloudTrail logging, KMS encryption, secrets management, incident response, and common misconfigurations.
+
+To add knowledge:
+
+1. Create or update a text-like file under `data/`, preferably a focused file under `data/aws_docs/`.
+2. Keep each document focused on one topic so retrieval can select useful chunks.
+3. Rebuild the vectorstore:
+
+```bash
+python -m app.ingest
+```
+
+4. Restart the backend if it is already running.
+
+The model provider, Gemini by default, writes the final answer. The RAG grounding comes from retrieved local documents, not from Gemini alone. This lets the app answer general questions directly while keeping cloud-security answers tied to your curated knowledge base.
 
 ## API Overview
 
@@ -360,6 +386,14 @@ SECRET_KEY=replace-with-a-long-random-secret
 CORS_ORIGINS=https://your-streamlit-app-url.streamlit.app
 CLOUDSEC_API_URL=https://your-backend-url.onrender.com
 ```
+
+After adding or changing files under `data/`, push the commit, deploy the latest commit on Render, then rebuild the vectorstore from the Render shell:
+
+```bash
+python -m app.ingest
+```
+
+If the Render instance is rebuilt or the generated `vectorstore/` directory is not persisted, run ingestion again after deployment.
 
 For durable production accounts, configure `DATABASE_URL` to a managed database. The default SQLite database is suitable for local development, but may not persist on ephemeral hosting.
 
