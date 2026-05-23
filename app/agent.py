@@ -22,6 +22,11 @@ GEMINI_MODEL = str(settings["gemini_model"])
 GEMINI_MAX_OUTPUT_TOKENS = int(settings["gemini_max_output_tokens"])
 REQUEST_TIMEOUT_SECONDS = int(settings["request_timeout_seconds"])
 logger = logging.getLogger(__name__)
+SCOPE_FALLBACK_MESSAGE = (
+    "I can help with cloud security topics in this workspace. "
+    "Try asking about IAM, cloud logs, misconfigurations, S3, networking, "
+    "encryption, secrets, or incident response."
+)
 
 CLOUD_KEYWORDS = {
     "aws", "azure", "gcp", "cloud", "iam", "policy", "policies", "role",
@@ -154,11 +159,7 @@ def _format_source(doc: dict, index: int) -> str:
 
 @lru_cache(maxsize=128)
 def _cached_general_fallback(query: str) -> str:
-    return (
-        "The configured model API is not available.\n\n"
-        "Please check your LLM_PROVIDER and API key settings, then retry.\n\n"
-        f"Request summary:\n{query[:500]}"
-    )
+    return SCOPE_FALLBACK_MESSAGE
 
 
 def _extract_output_text(payload: dict) -> str:
@@ -185,11 +186,7 @@ def _extract_gemini_text(payload: dict) -> str:
 
 def _model_unavailable(reason: str, fallback_message: str) -> str:
     logger.warning("Model fallback triggered: %s", reason)
-    return (
-        "Model response unavailable: "
-        f"{reason}\n\n"
-        f"{fallback_message}"
-    )
+    return fallback_message or SCOPE_FALLBACK_MESSAGE
 
 
 def generate_with_gemini(prompt: str, fallback_message: str) -> str:
