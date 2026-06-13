@@ -3,10 +3,10 @@ import streamlit as st
 
 try:
     from frontend.auth_api import login_user, signup_user
-    from frontend.auth_storage import persist_auth_to_cookie
+    from frontend.auth_storage import persist_auth_to_cookie, restore_auth_from_cookie
 except ModuleNotFoundError:
     from auth_api import login_user, signup_user
-    from auth_storage import persist_auth_to_cookie
+    from auth_storage import persist_auth_to_cookie, restore_auth_from_cookie
 
 
 st.set_page_config(
@@ -237,11 +237,38 @@ def inject_css():
         unsafe_allow_html=True,
     )
 
+def init_auth_state():
+    if "auth_token" not in st.session_state:
+        st.session_state.auth_token = None
+    if "user_email" not in st.session_state:
+        st.session_state.user_email = None
 
+    if not st.session_state.auth_token:
+        token, email = restore_auth_from_cookie()
+        if token:
+            st.session_state.auth_token = token
+            st.session_state.user_email = email
+
+init_auth_state()
 inject_css()
 
 if st.session_state.get("auth_token"):
     st.switch_page("streamlit_app.py")
+
+try:
+    from frontend.auth_api import check_backend_health
+except ImportError:
+    from auth_api import check_backend_health
+
+backend_awake = False
+with st.spinner("Connecting to secure backend..."):
+    backend_awake = check_backend_health()
+
+if not backend_awake:
+    st.warning("Backend is waking up from sleep (Render free tier cold start). Please wait...")
+    import time
+    time.sleep(3)
+    st.rerun()
 
 left, right = st.columns([1.1, 0.9], gap="large")
 
@@ -333,8 +360,10 @@ with right:
                     except Exception:
                         pass
 
-                st.success(result.get("message", "Account created successfully."))
-                st.switch_page("streamlit_app.py")
+                st.success(result.get("message", "Account created successfully. Redirecting..."))
+                import time
+                time.sleep(0.5)
+                st.rerun()
 
     st.markdown('<div class="switch-link">Already have an account?</div>', unsafe_allow_html=True)
     if st.button("Log in", use_container_width=True):

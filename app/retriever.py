@@ -120,28 +120,31 @@ def _load_vectorstore():
 
             documents = _load_persisted_documents()
             if not _documents_have_current_schema(documents):
-                logger.warning("Persisted vectorstore document schema is outdated; rebuilding. Run python -m app.ingest to refresh stored files explicitly.")
-                return create_vectorstore()
+                logger.error("Persisted vectorstore document schema is outdated. Run python -m app.ingest to refresh stored files explicitly.")
+                raise RuntimeError("Outdated vectorstore schema.")
             return faiss.read_index(INDEX_PATH), documents
-        except Exception:
-            logger.warning("Failed to load FAISS vectorstore; trying fallback vectorstore.", exc_info=True)
+        except Exception as exc:
+            logger.error("Failed to load FAISS vectorstore: %s", exc)
 
     embeddings_path = os.path.join(VECTORSTORE_DIR, "embeddings.npy")
     if os.path.exists(embeddings_path) and os.path.exists(DOCS_PATH):
-        documents = _load_persisted_documents()
-        if not _documents_have_current_schema(documents):
-            logger.warning("Persisted vectorstore document schema is outdated; rebuilding. Run python -m app.ingest to refresh stored files explicitly.")
-            return create_vectorstore()
-        return np.load(embeddings_path), documents
+        try:
+            documents = _load_persisted_documents()
+            if not _documents_have_current_schema(documents):
+                logger.error("Persisted vectorstore document schema is outdated. Run python -m app.ingest to refresh stored files explicitly.")
+                raise RuntimeError("Outdated vectorstore schema.")
+            return np.load(embeddings_path), documents
+        except Exception as exc:
+            logger.error("Failed to load fallback vectorstore: %s", exc)
 
     if os.path.exists(LEGACY_VECTOR_PATH):
         try:
             with open(LEGACY_VECTOR_PATH, "rb") as file_obj:
                 return pickle.load(file_obj)
-        except Exception:
-            logger.warning("Failed to load legacy vectorstore pickle; rebuilding vectorstore.", exc_info=True)
+        except Exception as exc:
+            logger.error("Failed to load legacy vectorstore pickle: %s", exc)
 
-    return create_vectorstore()
+    raise RuntimeError("Vectorstore files are missing. Please run build-time ingestion.")
 
 
 def search(query, top_k=3):

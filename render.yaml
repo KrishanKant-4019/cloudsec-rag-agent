@@ -2,6 +2,6 @@ services:
   - type: web
     name: cloudsec-rag-agent
     env: python
-    buildCommand: pip install -r requirements.txt
+    buildCommand: pip install -r requirements.txt && python -m app.ingest
     startCommand: python app.py
     plan: free

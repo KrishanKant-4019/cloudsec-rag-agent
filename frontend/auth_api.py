@@ -5,12 +5,21 @@ from typing import Any, Dict
 import requests
 
 API_BASE_URL = os.getenv("CLOUDSEC_API_URL", "https://cloudsec-rag-agent.onrender.com").rstrip("/")
-HEALTH_RETRY_DELAYS = [0.5, 1, 2, 4, 8, 12]
-AUTH_RETRY_DELAYS = [0.5, 1.5, 3, 6]
+HEALTH_RETRY_DELAYS = [0.5, 1.0]
+AUTH_RETRY_DELAYS = [0.5]
 
 
-def wait_for_backend(timeout: int = 12) -> None:
-    """Wake the backend before auth requests on free hosting cold starts."""
+def check_backend_health() -> bool:
+    """Send a fast, non-blocking check to verify if the backend is awake."""
+    try:
+        response = requests.get(f"{API_BASE_URL}/health", timeout=3)
+        return response.status_code == 200
+    except Exception:
+        return False
+
+
+def wait_for_backend(timeout: int = 5) -> None:
+    """Wake the backend before auth requests, fast-pathing if already awake."""
     last_error: Exception | None = None
 
     for attempt, delay in enumerate(HEALTH_RETRY_DELAYS):
@@ -27,8 +36,8 @@ def wait_for_backend(timeout: int = 12) -> None:
     raise last_error if last_error is not None else RuntimeError("Backend health check failed.")
 
 
-def _post_with_retry(path: str, payload: Dict[str, Any], timeout: int = 30) -> requests.Response:
-    # Handle backend startup/warm-up windows on free hosting tiers.
+def _post_with_retry(path: str, payload: Dict[str, Any], timeout: int = 15) -> requests.Response:
+    # Fast post request, assuming backend is verified awake.
     last_error: Exception | None = None
 
     for attempt, delay in enumerate(AUTH_RETRY_DELAYS):
