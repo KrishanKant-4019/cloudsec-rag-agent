@@ -459,4 +459,4 @@ def run_agent(query: str, attachments=None, history=None) -> str:
         return detect_misconfig(normalized_query)
     if is_cloud_security_question(normalized_query):
         return cloud_rag_answer(normalized_query, attachments=attachments, detailed=detailed)
-    return SCOPE_FALLBACK_MESSAGE
+    return general_answer(normalized_query, attachments=attachments, detailed=detailed)
