@@ -41,13 +41,6 @@ LLM_PROVIDER       = os.getenv("LLM_PROVIDER", "gemini").strip().lower()
 MODEL_NAME         = os.getenv("GEMINI_MODEL", "gemini-2.5-flash") if LLM_PROVIDER == "gemini" else os.getenv("OPENAI_MODEL", "gpt-4.1-mini")
 MODEL_LABEL        = f"{LLM_PROVIDER} / {MODEL_NAME}" if LLM_PROVIDER else MODEL_NAME
 
-QUICK_ACTIONS = [
-    {"icon": "🔍", "label": "Audit IAM Policy",    "prompt": "Analyze this IAM policy for privilege escalation risks and least-privilege violations."},
-    {"icon": "📋", "label": "Review Cloud Logs",   "prompt": "Review this cloud log and flag anything suspicious — unusual IPs, privilege changes, or data exfiltration patterns."},
-    {"icon": "⚙️",  "label": "Scan IaC File",      "prompt": "Scan this Terraform / CloudFormation file for infrastructure-as-code security misconfigurations."},
-    {"icon": "🛡️", "label": "IAM Best Practices", "prompt": "Summarize AWS IAM best practices with actionable hardening steps."},
-]
-
 KIND_ICONS = {
     "image": "🖼️", "video": "🎬", "audio": "🎵", "text": "📄",
     "json": "📦", "document": "📑", "archive": "🗜️", "data": "📊", "file": "📎",
@@ -58,36 +51,38 @@ KIND_ICONS = {
 def inject_css():
     st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 
 :root {
-  --bg:        #f8fafc;
-  --surface:   #f1f5f9;
-  --surface2:  #e2e8f0;
-  --border:    rgba(15,23,42,0.10);
-  --border2:   rgba(15,23,42,0.15);
-  --text:      #1e293b;
-  --text-strong:#0f172a;
-  --muted:     #64748b;
-  --accent:    #1e61f7;
-  --accent-soft:#1e61f7;
-  --accent-dim:rgba(30,97,247,0.12);
-  --code-bg:   rgba(15,23,42,0.06);
-  --chat-input-bg: rgba(248,250,252,0.96);
-  --success:   #16a34a;
-  --radius:    12px;
+  --bg:            #080b11;
+  --surface:       #0f141e;
+  --surface-hover: #161e2b;
+  --surface-input: #1a2333;
+  --border:        rgba(255, 255, 255, 0.06);
+  --border-glow:   rgba(6, 182, 212, 0.3);
+  --text:          #94a3b8;
+  --text-strong:   #f8fafc;
+  --accent:        #06b6d4;
+  --accent-soft:   #22d3ee;
+  --accent-glow:   rgba(6, 182, 212, 0.15);
+  --success:       #10b981;
+  --warning:       #f59e0b;
+  --critical:      #ef4444;
+  --radius:        12px;
 }
 
 * { box-sizing: border-box; }
 
 .stApp {
-  background: var(--bg);
+  background: radial-gradient(circle at 5% 10%, rgba(6, 182, 212, 0.05), transparent 35%),
+              radial-gradient(circle at 95% 85%, rgba(59, 130, 246, 0.03), transparent 30%),
+              var(--bg);
   color: var(--text);
   font-family: 'Inter', sans-serif;
 }
 
-[data-testid="stHeader"]   { background: transparent; }
-.main .block-container     { padding-top: 2rem; padding-bottom: 4rem; max-width: 820px; }
+[data-testid="stHeader"] { background: transparent; }
+.main .block-container { padding-top: 1.5rem; padding-bottom: 2rem; max-width: 1200px; }
 
 #MainMenu,
 [data-testid="stToolbar"],
@@ -99,202 +94,636 @@ footer {
 
 /* ── Sidebar ── */
 [data-testid="stSidebar"] {
-  background: var(--surface);
+  background: #0b0f17 !important;
   border-right: 1px solid var(--border);
 }
 [data-testid="stSidebarNav"] {
   display: none !important;
 }
-[data-testid="stSidebar"] *           { color: var(--text) !important; }
-[data-testid="stSidebarUserContent"]  { padding-top: 0.25rem; }
+[data-testid="stSidebar"] * { color: var(--text) !important; }
+[data-testid="stSidebarUserContent"] { padding: 1.5rem 1rem !important; }
 
-/* ── Hero (shown only on empty state) ── */
-.hero {
-  text-align: center;
-  padding: 3.5rem 1rem 2.2rem;
-  animation: fadeUp 0.4s ease-out;
+/* Brand container */
+.brand-container {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 2rem;
+  padding-left: 0.25rem;
 }
-.hero-icon  { font-size: 2.2rem; display: block; margin-bottom: 0.8rem; }
-.hero-title {
-  font-size: 1.75rem; font-weight: 600;
-  color: var(--text); letter-spacing: -0.03em;
-  margin: 0 0 0.5rem;
+.brand-logo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: rgba(37, 99, 235, 0.1);
 }
-.hero-sub {
-  font-size: 0.92rem; color: var(--muted);
-  line-height: 1.65; max-width: 720px;
-  margin: 0 auto 0.5rem; font-weight: 400;
-  text-align: center;
+.brand-text {
+  display: flex;
+  flex-direction: column;
 }
-.live-badge {
-  display: inline-flex; align-items: center; gap: 0.4rem;
-  padding: 0.26rem 0.65rem; border-radius: 999px;
-  background: rgba(63,185,80,0.08);
-  border: 1px solid rgba(63,185,80,0.18);
-  color: var(--success); font-size: 0.7rem;
-  font-family: 'JetBrains Mono', monospace;
-  margin-bottom: 1.4rem;
+.brand-title {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--text-strong) !important;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
 }
-.live-dot {
-  width: 6px; height: 6px; border-radius: 50%;
-  background: var(--success);
-  animation: pulse 2s ease-in-out infinite;
+.brand-subtitle {
+  font-size: 0.7rem;
+  color: #64748b !important;
+  font-weight: 500;
 }
 
-/* ── Quick actions grid ── */
-.qa-wrap {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
+/* User profile card */
+.user-profile-card {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.85rem;
+  border-radius: var(--radius);
+  background: #0f141e;
+  border: 1px solid var(--border);
+  margin-bottom: 1.5rem;
+}
+.user-avatar-circle {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: #6366f1; /* Purple/Blue circle */
+  color: white !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 1.1rem;
+}
+.user-info {
+  display: flex;
+  flex-direction: column;
+}
+.user-name {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--text-strong) !important;
+  line-height: 1.2;
+}
+.user-email {
+  font-size: 0.75rem;
+  color: #64748b !important;
+  margin-bottom: 0.15rem;
+}
+.user-status {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.72rem;
+  color: #10b981 !important;
+  font-weight: 500;
+}
+.status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #10b981;
+  box-shadow: 0 0 8px #10b981;
+}
+
+/* Nav Menu Headers and Items */
+.nav-heading {
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: #64748b !important;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-top: 1.25rem;
+  margin-bottom: 0.5rem;
+  padding-left: 0.5rem;
+}
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.55rem 0.75rem;
+  border-radius: 8px;
+  font-size: 0.88rem;
+  font-weight: 500;
+  color: #94a3b8 !important;
+  transition: all 0.15s;
+  margin-bottom: 0.15rem;
+}
+.nav-item:hover {
+  color: #f8fafc !important;
+  background: rgba(255, 255, 255, 0.02) !important;
+}
+.nav-item.active {
+  color: #3b82f6 !important;
+  background: rgba(59, 130, 246, 0.08) !important;
+  font-weight: 600;
+}
+.nav-icon {
+  font-size: 1rem;
+}
+
+/* Reset default Streamlit button styles globally to match SaaS theme */
+div.stButton > button,
+button[data-testid="baseButton-secondary"],
+button[data-testid="baseButton-primary"] {
+  background-color: #0f141e !important;
+  color: #f8fafc !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border-radius: 8px !important;
+  font-size: 0.88rem !important;
+  font-weight: 500 !important;
+  transition: all 0.2s !important;
+  box-shadow: none !important;
+}
+div.stButton > button:hover,
+button[data-testid="baseButton-secondary"]:hover {
+  background-color: #161e2b !important;
+  border-color: #3b82f6 !important;
+  color: #3b82f6 !important;
+}
+
+/* Logout button specific styling */
+div.logout-btn-wrapper button,
+div.logout-btn-wrapper button[data-testid="baseButton-secondary"] {
+  width: 100% !important;
+  background-color: transparent !important;
+  border: 1px solid rgba(239, 68, 68, 0.3) !important;
+  color: #ef4444 !important;
+  border-radius: 8px !important;
+  font-weight: 500 !important;
+  font-size: 0.88rem !important;
+  padding: 0.55rem 1rem !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 0.5rem !important;
+  transition: all 0.2s !important;
+}
+div.logout-btn-wrapper button:hover,
+div.logout-btn-wrapper button[data-testid="baseButton-secondary"]:hover {
+  background-color: rgba(239, 68, 68, 0.05) !important;
+  border-color: #ef4444 !important;
+  color: #ef4444 !important;
+  box-shadow: 0 0 10px rgba(239, 68, 68, 0.15) !important;
+}
+
+/* AI Model Card */
+.ai-model-card {
+  background: #0f141e;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.85rem;
+  margin-top: 0.5rem;
+}
+.ai-model-header {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-strong) !important;
+  display: flex;
+  align-items: center;
   gap: 0.5rem;
-  max-width: 500px;
-  margin: 0 auto;
-  animation: fadeUp 0.45s ease-out 0.07s both;
+  margin-bottom: 0.25rem;
+}
+.ai-model-sparkle {
+  color: #818cf8 !important;
+}
+.ai-model-status {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.72rem;
+  color: #10b981 !important;
+  font-weight: 500;
+  margin-top: 0.25rem;
 }
 
-/* ── Divider label ── */
-.or-divider {
-  display: flex; align-items: center; gap: 0.7rem;
-  margin: 1.5rem 0 0.6rem;
-  color: var(--muted); font-size: 0.71rem;
+/* Top Header layout */
+.top-header-container {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 1.5rem;
+  width: 100%;
+}
+.welcome-text-group {
+  display: flex;
+  flex-direction: column;
+}
+.welcome-title {
+  font-size: 1.6rem !important;
+  font-weight: 700 !important;
+  color: var(--text-strong) !important;
+  letter-spacing: -0.02em;
+  margin: 0 !important;
+}
+.welcome-subtitle {
+  font-size: 0.88rem !important;
+  color: #64748b !important;
+  margin-top: 0.2rem !important;
+}
+.system-badge {
+  background: rgba(16, 185, 129, 0.08);
+  border: 1px solid rgba(16, 185, 129, 0.15);
+  color: #10b981;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.35rem 0.75rem;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+/* Statistics Grid - CSS Grid to prevent column squishing */
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1rem;
+  width: 100%;
+  margin-bottom: 1.5rem;
+}
+@media (max-width: 900px) {
+  .dashboard-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+@media (max-width: 480px) {
+  .dashboard-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.stat-card {
+  background: #0f141e;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.15);
+  transition: all 0.2s;
+}
+.stat-card-blue { border-left: 3px solid #3b82f6; }
+.stat-card-green { border-left: 3px solid #10b981; }
+.stat-card-orange { border-left: 3px solid #f59e0b; }
+.stat-card-red { border-left: 3px solid #ef4444; }
+
+.stat-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2);
+}
+.stat-card-blue:hover { border-color: rgba(59, 130, 246, 0.5); }
+.stat-card-green:hover { border-color: rgba(16, 185, 129, 0.5); }
+.stat-card-orange:hover { border-color: rgba(245, 158, 11, 0.5); }
+.stat-card-red:hover { border-color: rgba(239, 68, 68, 0.5); }
+
+.stat-icon-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 10px;
+  flex-shrink: 0;
+}
+.stat-icon-blue { background: rgba(59, 130, 246, 0.1); }
+.stat-icon-green { background: rgba(16, 185, 129, 0.1); }
+.stat-icon-orange { background: rgba(245, 158, 11, 0.1); }
+.stat-icon-red { background: rgba(239, 68, 68, 0.1); }
+
+.stat-content {
+  display: flex;
+  flex-direction: column;
+}
+.stat-title {
+  font-size: 0.75rem;
+  color: #94a3b8;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+.stat-value {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #f8fafc;
+  line-height: 1.1;
+  margin: 0.15rem 0;
+}
+.stat-desc {
+  font-size: 0.68rem;
+  color: #64748b;
+}
+
+/* File Uploader styling */
+.upload-heading {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--text-strong);
+  margin-bottom: 0.75rem;
+}
+[data-testid="stFileUploaderDropzone"] {
+  border: 1px dashed rgba(255, 255, 255, 0.1) !important;
+  background: rgba(15, 20, 30, 0.4) !important;
+  border-radius: 10px !important;
+}
+[data-testid="stFileUploaderDropzone"]:hover {
+  border-color: #3b82f6 !important;
+}
+[data-testid="stFileUploaderDropzone"] button {
+  background: #1e293b !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  color: #f8fafc !important;
+  border-radius: 6px !important;
+}
+[data-testid="stFileUploaderDropzone"] button:hover {
+  background: #334155 !important;
+  border-color: #3b82f6 !important;
+  color: #f8fafc !important;
+}
+
+/* Text area input fields (forced dark theme integration) */
+textarea,
+div[data-baseweb="textarea"] {
+  background-color: #0f141e !important;
+  color: #f8fafc !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border-radius: 8px !important;
+}
+div[data-baseweb="textarea"] textarea {
+  color: #f8fafc !important;
+  background-color: transparent !important;
+}
+div[data-baseweb="textarea"]:focus-within {
+  border-color: #3b82f6 !important;
+}
+
+/* Upload & Analyze action button */
+div.upload-btn-container button,
+div.upload-btn-container button[data-testid="baseButton-secondary"],
+div.upload-btn-container button[data-testid="baseButton-primary"] {
+  background-color: #2563eb !important;
+  color: white !important;
+  border: none !important;
+  border-radius: 8px !important;
+  font-weight: 600 !important;
+  width: 100% !important;
+  padding: 0.6rem 1rem !important;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.2) !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 0.5rem !important;
+  transition: all 0.2s !important;
+}
+div.upload-btn-container button:hover,
+div.upload-btn-container button[data-testid="baseButton-primary"]:hover {
+  background-color: #1d4ed8 !important;
+  color: white !important;
+  box-shadow: 0 4px 16px rgba(37, 99, 235, 0.4) !important;
+}
+
+/* Staged / Uploaded files card list */
+.uploaded-files-heading {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-strong);
+  margin-top: 1.5rem;
+  margin-bottom: 0.5rem;
+}
+.uploaded-file-card {
+  background: #0f141e;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.5rem 0.75rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.4rem;
+}
+.uploaded-file-icon {
+  font-size: 0.9rem;
+  display: flex;
+  align-items: center;
+}
+.uploaded-file-name {
+  font-size: 0.8rem;
+  color: var(--text-strong);
+  flex-grow: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.uploaded-file-size {
+  font-size: 0.75rem;
+  color: #64748b;
+  margin-right: 0.5rem;
+}
+
+/* Remove file button styling */
+.remove-file-btn button {
+  background: transparent !important;
+  border: none !important;
+  color: #64748b !important;
+  font-size: 0.8rem !important;
+  padding: 0 !important;
+  width: auto !important;
+  min-width: 0 !important;
+  height: 24px !important;
+  line-height: 24px !important;
+  box-shadow: none !important;
+}
+.remove-file-btn button:hover {
+  color: #ef4444 !important;
+  background: transparent !important;
+}
+
+/* Clear actions - Inline Links Styling */
+div.clear-btn-wrapper {
+  display: flex;
+  gap: 1.5rem;
+  margin-top: 1rem;
+}
+div.clear-btn-wrapper button,
+div.clear-btn-wrapper button[data-testid="baseButton-secondary"] {
+  background-color: transparent !important;
+  border: none !important;
+  color: #ef4444 !important;
+  font-size: 0.85rem !important;
+  font-weight: 500 !important;
+  padding: 0 !important;
+  width: auto !important;
+  min-width: 0 !important;
+  box-shadow: none !important;
+  cursor: pointer;
+  text-decoration: none !important;
+  height: auto !important;
+  line-height: normal !important;
+  display: inline-flex !important;
+  align-items: center !important;
+}
+div.clear-btn-wrapper button:hover,
+div.clear-btn-wrapper button[data-testid="baseButton-secondary"]:hover {
+  text-decoration: underline !important;
+  color: #f87171 !important;
+  background-color: transparent !important;
+}
+
+/* Welcome Assistant Card (Right Col) */
+.welcome-chat-card {
+  background: #0f141e;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1.25rem;
+  display: flex;
+  gap: 0.85rem;
+  margin-bottom: 1.5rem;
+  max-width: 85%;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+}
+.chat-avatar-left {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: rgba(59, 130, 246, 0.1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.welcome-chat-content {
+  display: flex;
+  flex-direction: column;
+}
+.welcome-chat-header {
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: var(--text-strong);
+  margin-bottom: 0.5rem;
+}
+.welcome-chat-body {
+  font-size: 0.85rem;
+  color: var(--text-strong);
+  line-height: 1.6;
+}
+.welcome-check-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin-bottom: 0.35rem;
+  color: var(--text-strong);
+}
+.green-check {
+  color: #10b981 !important;
+  font-weight: 700 !important;
+  flex-shrink: 0;
+}
+.welcome-chat-timestamp {
+  font-size: 0.68rem;
+  color: #64748b;
+  margin-top: 0.6rem;
   font-family: 'JetBrains Mono', monospace;
-  text-transform: uppercase; letter-spacing: 0.08em;
-}
-.or-divider::before, .or-divider::after {
-  content: ''; flex: 1; height: 1px; background: var(--border);
 }
 
-/* ── Chat messages ── */
+/* Chat Input Styling */
+div[data-testid="stChatInput"] {
+  background-color: #0f141e !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border-radius: 8px !important;
+  padding: 4px !important;
+}
+div[data-testid="stChatInput"] textarea {
+  color: #f8fafc !important; /* Ensure input text is bright and visible */
+  background-color: transparent !important;
+  font-size: 0.92rem !important;
+  caret-color: #06b6d4 !important; /* Cyan cursor */
+}
+div[data-testid="stChatInput"] textarea::placeholder {
+  color: #64748b !important; /* Clear placeholder */
+}
+div[data-testid="stChatInput"] button {
+  background-color: #2563eb !important;
+  color: white !important;
+  border-radius: 6px !important;
+}
+.stChatInputContainer {
+  background-color: #080b11 !important;
+  border: none !important;
+}
+
+/* Chat bubble overrides for alignment */
 .stChatMessage {
   background: transparent !important;
   border: none !important;
-  box-shadow: none !important;
-  padding: 0.15rem 0 !important;
+  padding: 0.5rem 0 !important;
+}
+[data-testid="stChatMessageContent"] {
+  border-radius: var(--radius) !important;
+  padding: 0.95rem 1.1rem !important;
+  border: 1px solid var(--border) !important;
+  max-width: 85% !important;
 }
 [data-testid="stChatMessageContent"] p,
 [data-testid="stChatMessageContent"] li,
-[data-testid="stChatMessageContent"] span { color: var(--text) !important; font-size: 0.95rem; line-height: 1.7; }
-[data-testid="stChatMessageContent"] code {
-  font-family: 'JetBrains Mono', monospace !important;
-  background: var(--code-bg) !important;
-  color: var(--accent-soft) !important;
-  padding: 0.15em 0.38em; border-radius: 5px;
+[data-testid="stChatMessageContent"] span {
+  font-size: 0.92rem !important;
+  line-height: 1.6;
 }
-[data-testid="stChatMessageContent"] pre {
-  background: var(--surface) !important;
+/* User bubbles */
+[data-testid="stChatMessageUser"] {
+  flex-direction: row-reverse !important;
+  text-align: right !important;
+}
+[data-testid="stChatMessageUser"] [data-testid="stChatMessageContent"] {
+  background: #2563eb !important;
+  border: none !important;
+  border-radius: 12px 12px 0 12px !important;
+  color: white !important;
+  text-align: left !important;
+  display: inline-block !important;
+}
+[data-testid="stChatMessageUser"] [data-testid="stChatMessageContent"] * {
+  color: white !important;
+}
+/* Assistant bubbles */
+[data-testid="stChatMessageAssistant"] {
+  flex-direction: row !important;
+}
+[data-testid="stChatMessageAssistant"] [data-testid="stChatMessageContent"] {
+  background: #0f141e !important;
   border: 1px solid var(--border) !important;
-  border-radius: var(--radius) !important;
+  border-radius: 12px 12px 12px 0 !important;
+  color: var(--text-strong) !important;
+  display: inline-block !important;
+}
+[data-testid="stChatMessageAssistant"] [data-testid="stChatMessageContent"] * {
+  color: var(--text-strong) !important;
 }
 
-/* ── Chat input ── */
-.stChatInputContainer {
-  background: var(--chat-input-bg) !important;
-  border-top: 1px solid var(--border) !important;
-  backdrop-filter: blur(10px);
-}
-.stChatInput > div {
-  background: var(--surface) !important;
-  border: 1px solid var(--border2) !important;
-  border-radius: 14px !important;
-  box-shadow: 0 0 0 3px rgba(47,129,247,0.05) !important;
-}
-.stChatInput textarea { color: var(--text) !important; font-size: 0.94rem !important; }
-.stChatInput button   { background: var(--accent) !important; border: none !important; border-radius: 10px !important; }
-
-/* ── Buttons ── */
-.stButton > button {
-  background: var(--surface) !important;
-  border: 1px solid var(--border) !important;
-  border-radius: var(--radius) !important;
-  color: var(--text) !important;
-  font-size: 0.83rem !important;
-  font-weight: 500 !important;
-  transition: all 0.18s !important;
-}
-.stButton > button:hover {
-  border-color: var(--border2) !important;
-  background: var(--surface2) !important;
-}
-
-/* ── File chips ── */
-.chip-row { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.4rem; }
-.chip {
-  display: inline-flex; align-items: center; gap: 0.3rem;
-  padding: 0.26rem 0.58rem; border-radius: 999px;
-  background: var(--accent-dim);
-  border: 1px solid color-mix(in srgb, var(--accent) 28%, transparent);
-  color: var(--accent-soft); font-size: 0.74rem;
+/* Message timestamps */
+.msg-ts {
+  font-size: 0.68rem;
+  color: #64748b;
   font-family: 'JetBrains Mono', monospace;
-}
-
-/* ── Timestamp ── */
-.msg-ts { font-size: 0.68rem; color: var(--muted); font-family: 'JetBrains Mono', monospace; margin-top: 0.2rem; }
-
-/* ── Sidebar model badge ── */
-.model-badge {
-  display: flex; align-items: center; gap: 0.5rem;
-  padding: 0.5rem 0.75rem; border-radius: var(--radius);
-  background: var(--accent-dim);
-  border: 1px solid color-mix(in srgb, var(--accent) 24%, transparent);
-  font-size: 0.78rem; font-family: 'JetBrains Mono', monospace;
-  color: var(--accent-soft); margin-bottom: 0.7rem;
-}
-
-.signed-card {
-  padding: 0.75rem 0.85rem;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: color-mix(in srgb, var(--surface) 80%, transparent);
-  margin-bottom: 0.9rem;
-}
-
-.signed-label {
-  font-size: 0.72rem;
-  color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-}
-
-.signed-value {
-  font-size: 0.9rem;
-  color: var(--text-strong);
   margin-top: 0.25rem;
-  word-break: break-word;
+}
+[data-testid="stChatMessageUser"] .msg-ts {
+  text-align: right !important;
 }
 
-.brand-title {
-  font-size: 1.05rem;
-  font-weight: 600;
-  color: var(--text-strong);
-}
-
-.brand-subtitle {
-  font-size: 0.7rem;
-  color: var(--muted);
-  margin-top: 0.1rem;
-  font-family: 'JetBrains Mono', monospace;
-}
-
-.upload-title {
-  font-size: 0.77rem;
-  color: var(--muted);
-  margin-bottom: 0.4rem;
-}
-
-/* ── Expander ── */
+/* Expander custom styling */
 [data-testid="stExpander"] {
-  background: var(--surface) !important;
+  background: #0f141e !important;
   border: 1px solid var(--border) !important;
   border-radius: var(--radius) !important;
 }
-[data-testid="stExpander"] summary { font-size: 0.82rem !important; }
-
-@keyframes fadeUp {
-  from { opacity: 0; transform: translateY(8px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50%       { opacity: 0.3; }
+[data-testid="stExpander"] summary {
+  font-size: 0.82rem !important;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -418,94 +847,118 @@ def logout_user():
 
 
 # ── Sidebar ───────────────────────────────────────────────────────────────────
+def get_user_name_from_email(email):
+    if not email:
+        return "Krishan Kant"
+    if email.lower() == "krishan@example.com":
+        return "Krishan Kant"
+    parts = email.split('@')[0].split('.')
+    return " ".join([p.capitalize() for p in parts])
+
+
 def render_sidebar():
     with st.sidebar:
+        # Brand section
         st.markdown(
-            f"""
-            <div class='signed-card'>
-              <div class='signed-label'>Signed in as</div>
-              <div class='signed-value'>{st.session_state.get('user_email') or 'Unknown'}</div>
+            """
+            <div class="brand-container">
+              <div class="brand-logo">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+              </div>
+              <div class="brand-text">
+                <div class="brand-title">CloudSec Agent</div>
+                <div class="brand-subtitle">AI Powered Cloud Security</div>
+              </div>
             </div>
             """,
             unsafe_allow_html=True,
         )
 
-        if st.button("Logout", use_container_width=True):
-            logout_user()
-
-        # Brand
-        st.markdown("""
-        <div style="margin-bottom:1.1rem;">
-          <div class="brand-title">⛨ CloudSec Agent</div>
-          <div class="brand-subtitle">RAG-Powered · Cloud Security</div>
-        </div>
-        """, unsafe_allow_html=True)
-
-        st.markdown(f'<div class="model-badge">🤖 &nbsp;{MODEL_LABEL}</div>', unsafe_allow_html=True)
-        st.divider()
-
-        # Upload
+        # Profile Section
+        user_email = st.session_state.get('user_email') or 'krishan@example.com'
+        user_name = get_user_name_from_email(user_email)
+        first_letter = user_name[0].upper() if user_name else 'K'
         st.markdown(
-            "<div class='upload-title'>📎 Attach Files</div>",
+            f"""
+            <div class="user-profile-card">
+              <div class="user-avatar-circle">{first_letter}</div>
+              <div class="user-info">
+                <div class="user-name">{user_name}</div>
+                <div class="user-email">{user_email}</div>
+                <div class="user-status"><span class="status-dot"></span> Connected</div>
+              </div>
+            </div>
+            """,
             unsafe_allow_html=True,
         )
 
-        uploaded_files = st.file_uploader(
-            "files",
-            accept_multiple_files=True,
-            key=f"uploader_{st.session_state.uploader_key}",
-            label_visibility="collapsed",
+        # Navigation menu
+        st.markdown(
+            """
+            <div class="nav-heading">MAIN</div>
+            <div class="nav-item active">
+              <span class="nav-icon">💬</span> Chat
+            </div>
+            <div class="nav-item">
+              <span class="nav-icon">📤</span> Upload & Analyze
+            </div>
+            <div class="nav-item">
+              <span class="nav-icon">🕒</span> History
+            </div>
+            <div class="nav-item">
+              <span class="nav-icon">📊</span> Reports
+            </div>
+
+            <div class="nav-heading">RESOURCES</div>
+            <div class="nav-item">
+              <span class="nav-icon">📖</span> Documentation
+            </div>
+            <div class="nav-item">
+              <span class="nav-icon">🛡️</span> Best Practices
+            </div>
+            """,
+            unsafe_allow_html=True,
         )
-        too_many_files = bool(uploaded_files) and len(uploaded_files) > MAX_ATTACHMENT_COUNT
-        if too_many_files:
-            st.error(f"Attach up to {MAX_ATTACHMENT_COUNT} files per request.")
 
-    # Previews for staged files
-        if uploaded_files:
-            for f in uploaded_files:
-                raw = f.getvalue()
-                kind = detect_kind(f.name, f.type or "")
-                icon = KIND_ICONS.get(kind, "📎")
-                label = f"{icon} {f.name[:24]}{'…' if len(f.name) > 24 else ''}"
-                with st.expander(label, expanded=False):
-                    if kind == "image":
-                        st.image(raw, use_container_width=True)
-                    elif kind == "video":
-                        st.video(raw)
-                    elif kind == "audio":
-                        st.audio(raw)
-                    elif kind in {"text", "json", "data"}:
-                        txt = extract_text(raw, kind) or ""
-                        if txt:
-                            st.code(txt[:400], language="text")
-                    else:
-                        st.caption(f.type or "Binary file")
-
-        c1, c2 = st.columns(2)
-        with c1:
-            send_files = st.button("Send Files", use_container_width=True, disabled=not uploaded_files or too_many_files)
-        with c2:
-            clear_chat = st.button("Clear Chat", use_container_width=True)
-
-    # Export (only when there's history)
+        # Export findings button
         active_chat = get_active_chat()
         if active_chat["messages"]:
-            st.markdown("<div style='height:0.3rem'></div>", unsafe_allow_html=True)
             export_txt = "\n\n".join(
                 f"[{m['role'].upper()}] {m.get('timestamp','')}\n{m.get('content','')}"
                 for m in active_chat["messages"]
             )
             st.download_button(
-                "💾 Export Chat",
+                "💾 Export findings",
                 export_txt,
-                file_name="cloudsec_chat.txt",
+                file_name="cloudsec_audit_report.txt",
                 mime="text/plain",
                 use_container_width=True,
+                key="sidebar_export_btn",
             )
 
-        st.divider()
+        # Logout action
+        st.markdown("<div class='logout-btn-wrapper'>", unsafe_allow_html=True)
+        if st.button("🚪 Logout", key="sidebar_logout_btn"):
+            logout_user()
+        st.markdown("</div>", unsafe_allow_html=True)
 
-        return uploaded_files, send_files, clear_chat
+        # AI Model Card at bottom
+        st.markdown(
+            f"""
+            <div class="ai-model-section">
+              <div class="nav-heading">AI MODEL</div>
+              <div class="ai-model-card">
+                <div class="ai-model-header">
+                  <span class="ai-model-sparkle">✨</span> Gemini 2.5 Flash
+                </div>
+                <div class="ai-model-status">
+                  <span class="status-dot"></span> Connected
+                </div>
+              </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
 
 # ── Init ──────────────────────────────────────────────────────────────────────
@@ -521,10 +974,11 @@ def init_state():
         }]
     if "active_chat_id" not in st.session_state: st.session_state.active_chat_id = 1
     if "next_chat_id" not in st.session_state: st.session_state.next_chat_id = 2
+    if "removed_files" not in st.session_state: st.session_state.removed_files = set()
 
 
 st.set_page_config(
-    page_title="CloudSec Agent",
+    page_title="CloudSec Auditor Console",
     page_icon="⛨",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -534,74 +988,259 @@ init_auth_state()
 require_auth()
 init_state()
 
-uploaded_files, send_files, clear_chat = render_sidebar()
+render_sidebar()
 active_chat = get_active_chat()
 
-if clear_chat:
-    active_chat["messages"] = []
-    active_chat["title"] = "New chat"
-    refresh_chat_meta(active_chat)
-    st.rerun()
+# Reserve header & stats container at the top of the page
+top_container = st.container()
 
-# ── Empty state: hero + quick actions ────────────────────────────────────────
-quick_prompt = None
+# Split main workspace into Left Column (File upload/details) and Right Column (Welcome / Chat)
+main_col_left, main_col_right = st.columns([1.2, 1.8], gap="large")
 
-if not active_chat["messages"]:
-    st.markdown(f"""
-    <div class="hero">
-      <span class="hero-icon">⛨</span>
-      <div class="live-badge"><span class="live-dot"></span>&nbsp; Connected · {MODEL_LABEL}</div>
-      <h1 class="hero-title">What can I help you secure?</h1>
-    </div>
-    """, unsafe_allow_html=True)
+with main_col_left:
+    st.markdown("<div class='upload-heading'>Upload Files</div>", unsafe_allow_html=True)
+    uploaded_files = st.file_uploader(
+        "files",
+        accept_multiple_files=True,
+        key=f"uploader_{st.session_state.uploader_key}",
+        label_visibility="collapsed",
+    )
+    
+    # Filter files that haven't been removed
+    active_staged = []
+    if uploaded_files:
+        for f in uploaded_files:
+            if f.name not in st.session_state.removed_files:
+                active_staged.append(f)
+                
+    too_many_files = len(active_staged) > MAX_ATTACHMENT_COUNT
+    if too_many_files:
+        st.error(f"Limit: up to {MAX_ATTACHMENT_COUNT} staged files.")
+        
+    st.markdown("<div style='height: 0.5rem;'></div>", unsafe_allow_html=True)
+    
+    # Context input
+    additional_context = st.text_area(
+        "Additional Context (Optional)",
+        placeholder="Provide context about the files, your concerns, or what you want me to focus on.\n\nExample:\nThese logs are from a suspected privilege escalation incident...",
+        key="additional_context_input",
+        height=130,
+        max_chars=1000,
+    )
+    # Character counter
+    char_count = len(additional_context)
+    st.markdown(f"<div style='text-align: right; font-size: 0.72rem; color: #64748b; margin-top: -12px;'>{char_count} / 1000</div>", unsafe_allow_html=True)
+    
+    st.markdown("<div style='height: 0.75rem;'></div>", unsafe_allow_html=True)
+    
+    # Primary analysis button
+    st.markdown("<div class='upload-btn-container'>", unsafe_allow_html=True)
+    send_files = st.button("🚀 Upload & Analyze", use_container_width=True, disabled=too_many_files)
+    st.markdown("</div>", unsafe_allow_html=True)
+    
+    # Render custom staged file list
+    if active_staged:
+        st.markdown(f"<div class='uploaded-files-heading'>Uploaded Files ({len(active_staged)})</div>", unsafe_allow_html=True)
+        for f in active_staged:
+            col_file, col_del = st.columns([6, 1])
+            with col_file:
+                st.markdown(f"""
+                <div class="uploaded-file-card">
+                  <div class="uploaded-file-icon">📄</div>
+                  <div class="uploaded-file-name">{f.name}</div>
+                  <div class="uploaded-file-size">{format_size(len(f.getvalue()))}</div>
+                </div>
+                """, unsafe_allow_html=True)
+            with col_del:
+                st.markdown("<div class='remove-file-btn'>", unsafe_allow_html=True)
+                if st.button("✕", key=f"del_main_{f.name}_{st.session_state.uploader_key}", use_container_width=True):
+                    st.session_state.removed_files.add(f.name)
+                    st.rerun()
+                st.markdown("</div>", unsafe_allow_html=True)
+                
+    # Actions footer (Clear all / Clear chat)
+    st.markdown("<div class='clear-btn-wrapper'>", unsafe_allow_html=True)
+    col_cf, col_cc = st.columns(2)
+    with col_cf:
+        if st.button("🗑️ Clear all", key="clear_all_files"):
+            if uploaded_files:
+                for f in uploaded_files:
+                    st.session_state.removed_files.add(f.name)
+            st.rerun()
+    with col_cc:
+        if st.button("🧹 Clear chat", key="clear_chat_timeline"):
+            active_chat["messages"] = []
+            active_chat["title"] = "New chat"
+            st.session_state.removed_files = set()
+            refresh_chat_meta(active_chat)
+            st.rerun()
+    st.markdown("</div>", unsafe_allow_html=True)
 
-    # 2-column quick action buttons, centered
-    _, left, right, _ = st.columns([1, 2, 2, 1])
-    for i, qa in enumerate(QUICK_ACTIONS):
-        col = left if i % 2 == 0 else right
-        with col:
-            if st.button(f"{qa['icon']}  {qa['label']}", key=f"qa_{i}", use_container_width=True):
-                quick_prompt = qa["prompt"]
+with main_col_right:
+    # Render Welcome Assistant Card if chat history is empty
+    if not active_chat["messages"]:
+        st.markdown(
+            f"""
+            <div class="welcome-chat-card">
+              <div class="chat-avatar-left">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+              </div>
+              <div class="welcome-chat-content">
+                <div class="welcome-chat-header">Hello! I'm CloudSec Agent.</div>
+                <div class="welcome-chat-body">
+                  <p>I can help you with:</p>
+                  <div class="welcome-check-item"><span class="green-check">✓</span> IAM policy reviews</div>
+                  <div class="welcome-check-item"><span class="green-check">✓</span> Cloud log analysis</div>
+                  <div class="welcome-check-item"><span class="green-check">✓</span> IaC security scanning</div>
+                  <div class="welcome-check-item"><span class="green-check">✓</span> Security best practices</div>
+                  <div class="welcome-check-item"><span class="green-check">✓</span> Incident investigation</div>
+                  <p style="margin-top: 0.8rem; margin-bottom: 0;">What would you like to analyze today?</p>
+                </div>
+                <div class="welcome-chat-timestamp">10:30 AM</div>
+              </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    else:
+        # Render Chat History
+        for msg in active_chat["messages"]:
+            avatar = "🧑‍💻" if msg["role"] == "user" else "🤖"
+            with st.chat_message(msg["role"], avatar=avatar):
+                if msg.get("content"):
+                    st.markdown(msg["content"])
+                
+                if msg.get("attachments"):
+                    chips = "".join(
+                        f"<span class='chip'>{KIND_ICONS.get(a['kind'],'📎')} "
+                        f"{a['name']} · {format_size(a['size_bytes'])}</span>"
+                        for a in msg["attachments"]
+                    )
+                    st.markdown(f"<div class='chip-row'>{chips}</div>", unsafe_allow_html=True)
+                    for att in msg["attachments"]:
+                        if att.get("text_preview"):
+                            with st.expander(f"Preview — {att['name']}", expanded=False):
+                                st.code(att["text_preview"], language="text")
+                                
+                if msg.get("timestamp"):
+                    st.markdown(f"<div class='msg-ts'>{msg['timestamp']}</div>", unsafe_allow_html=True)
 
-    st.markdown('<div class="or-divider">or type a message below</div>', unsafe_allow_html=True)
+    # Chat Input
+    user_input = st.chat_input("Ask CloudSec Agent anything...")
+    st.markdown("<p style='text-align: center; font-size: 0.72rem; color: #64748b; margin-top: 0.5rem;'>CloudSec Agent can make mistakes. Please verify important information.</p>", unsafe_allow_html=True)
 
-# ── Active chat ───────────────────────────────────────────────────────────────
-else:
+# ── Header & Dynamic Dashboard Stats (Rendered at top container) ──────────────
+with top_container:
+    # 1. Top Header Row
+    th_col_left, th_col_right = st.columns([3, 1])
+    with th_col_left:
+        user_email = st.session_state.get('user_email') or 'krishan@example.com'
+        first_name = get_user_name_from_email(user_email).split(' ')[0]
+        st.markdown(
+            f"""
+            <div class="welcome-text-group">
+              <h1 class="welcome-title">Welcome back, {first_name}! 👋</h1>
+              <p class="welcome-subtitle">Ask anything about cloud security, analyze files, and get AI-powered insights.</p>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    with th_col_right:
+        st.markdown(
+            """
+            <div style="text-align: right; margin-top: 0.5rem; margin-bottom: 1rem;">
+              <span class="system-badge">
+                <span style="display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #10b981; box-shadow: 0 0 8px #10b981;"></span>
+                System Operational
+              </span>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    # 2. Dynamic stats calculation
+    total_staged = len(active_staged)
+    findings_count = 0
+    critical_count = 0
+    last_analysis_time = "N/A"
+
     for msg in active_chat["messages"]:
-        avatar = "🧑‍💻" if msg["role"] == "user" else "🤖"
-        with st.chat_message(msg["role"], avatar=avatar):
-            if msg.get("content"):
-                st.markdown(msg["content"])
-
-            if msg.get("attachments"):
-                chips = "".join(
-                    f"<span class='chip'>{KIND_ICONS.get(a['kind'],'📎')} "
-                    f"{a['name']} · {format_size(a['size_bytes'])}</span>"
-                    for a in msg["attachments"]
-                )
-                st.markdown(f"<div class='chip-row'>{chips}</div>", unsafe_allow_html=True)
-                for att in msg["attachments"]:
-                    if att.get("text_preview"):
-                        with st.expander(f"Preview — {att['name']}", expanded=False):
-                            st.code(att["text_preview"], language="text")
-
+        if msg["role"] == "assistant":
+            content_str = msg.get("content", "")
+            findings_count += content_str.count("- ") + content_str.count("* ")
+            content_lower = content_str.lower()
+            critical_count += content_lower.count("critical") + content_lower.count("high") + content_lower.count("vulnerability")
             if msg.get("timestamp"):
-                st.markdown(f"<div class='msg-ts'>{msg['timestamp']}</div>", unsafe_allow_html=True)
+                last_analysis_time = msg["timestamp"]
 
-# ── Input & submission ────────────────────────────────────────────────────────
-user_input    = st.chat_input("Message CloudSec Agent…")
-should_submit = bool(user_input) or bool(quick_prompt) or (bool(send_files) and bool(uploaded_files))
+    if findings_count > 99: findings_count = 99
+    if critical_count > 99: critical_count = 99
+
+    # 3. Stats Row
+    stats_html = f"""
+    <div class="dashboard-grid">
+      <div class="stat-card stat-card-blue">
+        <div class="stat-icon-container stat-icon-blue">
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg>
+        </div>
+        <div class="stat-content">
+          <div class="stat-title">Files Uploaded</div>
+          <div class="stat-value">{total_staged}</div>
+          <div class="stat-desc">Total files</div>
+        </div>
+      </div>
+      <div class="stat-card stat-card-green">
+        <div class="stat-icon-container stat-icon-green">
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 11 2 2 4-4"/></svg>
+        </div>
+        <div class="stat-content">
+          <div class="stat-title">Security Findings</div>
+          <div class="stat-value">{findings_count}</div>
+          <div class="stat-desc">Across all files</div>
+        </div>
+      </div>
+      <div class="stat-card stat-card-orange">
+        <div class="stat-icon-container stat-icon-orange">
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        </div>
+        <div class="stat-content">
+          <div class="stat-title">Critical Issues</div>
+          <div class="stat-value">{critical_count}</div>
+          <div class="stat-desc">Require attention</div>
+        </div>
+      </div>
+      <div class="stat-card stat-card-red">
+        <div class="stat-icon-container stat-icon-red">
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        </div>
+        <div class="stat-content">
+          <div class="stat-title">Last Analysis</div>
+          <div class="stat-value" style="font-size: 1.1rem; padding-top: 0.35rem;">{last_analysis_time}</div>
+          <div class="stat-desc">Latest scan</div>
+        </div>
+      </div>
+    </div>
+    """
+    st.markdown(stats_html, unsafe_allow_html=True)
+    st.markdown("<div style='height: 1.5rem;'></div>", unsafe_allow_html=True)
+
+# ── Chat submission handler ───────────────────────────────────────────────────
+should_submit = bool(user_input) or (bool(send_files) and bool(active_staged))
 
 if should_submit:
+    st.session_state.removed_files = set()
     request_history = build_chat_history(active_chat)
     payloads, previews = [], []
-    for f in (uploaded_files or []):
+    for f in (active_staged or []):
         p, v = build_payload(f)
         payloads.append(p)
         previews.append(v)
 
-    query        = user_input or quick_prompt or ""
-    display_text = query if query else f"Sent {len(previews)} file(s) for analysis."
+    query = (user_input or "").strip()
+    if additional_context.strip():
+        query = f"{query}\n\n[Additional Context/Investigation Goals]:\n{additional_context.strip()}".strip()
+
+    display_text = query if query else f"Sent {len(previews)} file(s) for security analysis."
 
     active_chat["messages"].append({
         "role": "user", "content": display_text,
@@ -610,7 +1249,7 @@ if should_submit:
     refresh_chat_meta(active_chat)
 
     with st.chat_message("assistant", avatar="🤖"):
-        with st.spinner("Thinking…"):
+        with st.spinner("Analyzing threat matrix..."):
             try:
                 data   = submit_request(query, payloads, request_history)
                 answer = data.get("answer") or f"Error: {data.get('error', 'Unknown error')}"
